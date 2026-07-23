@@ -49,13 +49,15 @@ func (gb *GoogleBypass) Start() error {
 	exec.Command("pkill", "-f", "google-chrome.*--remote-debugging-port=9222").Run()
 	time.Sleep(500 * time.Millisecond)
 
-	gb.chromeCmd = exec.Command(chromePath,
+	gb.chromeCmd = exec.Command("xvfb-run",
+		chromePath,
 		"--remote-debugging-port=9222",
 		"--no-sandbox",
 		"--disable-gpu",
 		"--disable-dev-shm-usage",
 		"--disable-setuid-sandbox",
-		"--headless=new",
+		"--disable-blink-features=AutomationControlled",
+		"--disable-features=ChromeWhatsNewUI,ChromeCleanup,MediaRouter",
 		"--window-size=1920,1080",
 		"--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 	)

