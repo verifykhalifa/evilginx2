@@ -1261,51 +1261,7 @@ func (t *Terminal) createHelp() {
 }
 
 func (t *Terminal) cookieTokensToJSON(tokens map[string]map[string]*database.CookieToken) string {
-	type Cookie struct {
-		Path           string `json:"path"`
-		Domain         string `json:"domain"`
-		ExpirationDate int64  `json:"expirationDate"`
-		Value          string `json:"value"`
-		Name           string `json:"name"`
-		HttpOnly       bool   `json:"httpOnly"`
-		HostOnly       bool   `json:"hostOnly"`
-		Secure         bool   `json:"secure"`
-		Session        bool   `json:"session"`
-	}
-
-	var cookies []*Cookie
-	for domain, tmap := range tokens {
-		for k, v := range tmap {
-			c := &Cookie{
-				Path:           v.Path,
-				Domain:         domain,
-				ExpirationDate: time.Now().Add(365 * 24 * time.Hour).Unix(),
-				Value:          v.Value,
-				Name:           k,
-				HttpOnly:       v.HttpOnly,
-				Secure:         false,
-				Session:        false,
-			}
-			if strings.Index(k, "__Host-") == 0 || strings.Index(k, "__Secure-") == 0 {
-				c.Secure = true
-			}
-			if domain[:1] == "." {
-				c.HostOnly = false
-				// c.Domain = domain[1:] - bug support no longer needed
-				// NOTE: EditThisCookie was phased out in Chrome as it did not upgrade to manifest v3. The extension had a bug that I had to support to make the exported cookies work for !hostonly cookies.
-				// Use StorageAce extension from now on: https://chromewebstore.google.com/detail/storageace/cpbgcbmddckpmhfbdckeolkkhkjjmplo
-			} else {
-				c.HostOnly = true
-			}
-			if c.Path == "" {
-				c.Path = "/"
-			}
-			cookies = append(cookies, c)
-		}
-	}
-
-	json, _ := json.Marshal(cookies)
-	return string(json)
+	return FormatCookieTokens(tokens)
 }
 
 func (t *Terminal) tokensToJSON(tokens map[string]string) string {

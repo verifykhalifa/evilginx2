@@ -826,3 +826,12 @@ func (c *Config) GetGoPhishApiKey() string {
 func (c *Config) GetGoPhishInsecureTLS() bool {
 	return c.gophishConfig.InsecureTLS
 }
+
+func (c *Config) GetConfig() *GeneralConfig {
+	return c.general
+}
+
+func (c *Config) SaveConfig() {
+	c.cfg.Set(CFG_GENERAL, c.general)
+	c.cfg.WriteConfig()
+}

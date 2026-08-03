@@ -34,6 +34,7 @@ type CookieToken struct {
 	Value    string
 	Path     string
 	HttpOnly bool
+	Secure   bool
 }
 
 func (d *Database) sessionsInit() {
