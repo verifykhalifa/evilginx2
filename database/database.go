@@ -102,6 +102,10 @@ func (d *Database) DeleteSessionById(id int) error {
 	return err
 }
 
+func (d *Database) DeleteAllSessions() error {
+	return d.sessionsDeleteAll()
+}
+
 func (d *Database) CreateInvalidLog(s *InvalidLog) (*InvalidLog, error) {
 	return d.invalidLogsCreate(s)
 }

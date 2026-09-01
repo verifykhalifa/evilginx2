@@ -233,6 +233,26 @@ func (d *Database) sessionsDelete(id int) error {
 	return err
 }
 
+// sessionsDeleteAll removes every session record (and its id counter) in one pass.
+func (d *Database) sessionsDeleteAll() error {
+	return d.db.Update(func(tx *buntdb.Tx) error {
+		var keys []string
+		tx.Ascend(SessionTable+"_id", func(key, val string) bool {
+			keys = append(keys, key)
+			return true
+		})
+		for _, k := range keys {
+			if _, err := tx.Delete(k); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Delete(SessionTable + ":0:id"); err != nil && err != buntdb.ErrNotFound {
+			return err
+		}
+		return nil
+	})
+}
+
 func (d *Database) sessionsGetById(id int) (*Session, error) {
 	s := &Session{}
 	err := d.db.View(func(tx *buntdb.Tx) error {
