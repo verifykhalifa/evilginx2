@@ -191,7 +191,18 @@ func main() {
 	if *dashboard_enabled {
 		dashAuth := *dashboard_auth
 		if dashAuth == "" {
-			dashAuth = core.GenRandomAlphanumString(16)
+			// Use the persisted token from config.json so the auth token is
+			// STABLE across restarts/reboots. Generated once on first start,
+			// written to config, reused forever. Without this, every restart
+			// (crash, reboot, systemd Restart=always) invalidates the token
+			// the browser has stored -> dashboard keeps logging you out.
+			dashAuth = cfg.GetConfig().DashboardAuthToken
+			if dashAuth == "" {
+				dashAuth = core.GenRandomAlphanumString(16)
+				cfg.GetConfig().DashboardAuthToken = dashAuth
+				cfg.SaveConfig()
+				log.Info("dashboard: generated new auth token and persisted to config")
+			}
 		}
 		dash := dashboard.New(db, cfg, dashAuth, *dashboard_port)
 		go func() {

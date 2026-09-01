@@ -77,6 +77,11 @@ type GeneralConfig struct {
 
 	Chatid    string `mapstructure:"chatid" json:"chatid" yaml:"chatid"`
 	Teletoken string `mapstructure:"teletoken" json:"teletoken" yaml:"teletoken"`
+
+	// DashboardAuthToken is persisted so the dashboard auth token survives
+	// restarts. Generated once on first start, reused forever. The --dashboard-auth
+	// CLI flag can override it at runtime.
+	DashboardAuthToken string `mapstructure:"dashboard_auth_token" json:"dashboard_auth_token" yaml:"dashboard_auth_token"`
 }
 
 type Config struct {

