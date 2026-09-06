@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verify you're human</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #f8f9fe;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    color: #1a1d21;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid #e8ebf0;
+    border-radius: 16px;
+    box-shadow: 0 2px 8px rgba(26,29,33,0.06), 0 1px 2px rgba(26,29,33,0.04);
+    padding: 40px 48px;
+    width: 100%;
+    max-width: 418px;
+    text-align: center;
+  }
+  .icon {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f0f2f5;
+    border-radius: 12px;
+  }
+  .icon svg { width: 24px; height: 24px; color: #3b4250; }
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: #1a1d21;
+    margin-bottom: 8px;
+    letter-spacing: -0.01em;
+  }
+  .subtitle {
+    font-size: 15px;
+    color: #5a6270;
+    line-height: 1.5;
+    margin-bottom: 4px;
+  }
+  .body-text {
+    font-size: 14px;
+    color: #7a828e;
+    line-height: 1.5;
+    margin-bottom: 32px;
+  }
+  .slider-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 320px;
+    margin: 0 auto;
+  }
+  .slider-track {
+    height: 56px;
+    background: #f4f5f7;
+    border: 1px solid #e8ebf0;
+    border-radius: 28px;
+    overflow: hidden;
+    position: relative;
+  }
+  .slider-fill {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+    border-radius: 27px;
+    width: 0;
+    transition: width 0.15s ease-out;
+    pointer-events: none;
+  }
+  .slider-fill.complete {
+    width: 100%;
+    border-radius: 27px;
+  }
+  .slider-handle {
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 52px; height: 52px;
+    background: #fff;
+    border: 1px solid #e8ebf0;
+    border-radius: 50%;
+    box-shadow: 0 2px 6px rgba(26,29,33,0.12), 0 1px 2px rgba(26,29,33,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    z-index: 2;
+    transition: transform 0.1s ease-out, box-shadow 0.15s ease, border-color 0.15s ease;
+  }
+  .slider-handle:hover { border-color: #d4d8df; box-shadow: 0 3px 10px rgba(26,29,33,0.16); }
+  .slider-handle:active, .slider-handle.dragging { cursor: grabbing; transform: scale(1.04); box-shadow: 0 4px 14px rgba(26,29,33,0.2); }
+  .slider-handle.complete { cursor: default; background: #ecfdf5; border-color: #10b981; }
+  .slider-handle svg { width: 22px; height: 22px; color: #3b4250; transition: color 0.15s ease, transform 0.15s ease; }
+  .slider-handle.complete svg { color: #10b981; transform: rotate(0deg); }
+  .slider-label {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 14px;
+    font-weight: 500;
+    color: #7a828e;
+    white-space: nowrap;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 1;
+  }
+  .slider-label.hidden { opacity: 0; }
+  .slider-success {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 14px;
+    font-weight: 600;
+    color: #10b981;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 1;
+  }
+  .slider-success.visible { opacity: 1; }
+  @media (max-width: 480px) {
+    .card { padding: 32px 24px; margin: 12px; }
+    h1 { font-size: 20px; }
+    .slider-track { height: 52px; border-radius: 26px; }
+    .slider-handle { width: 48px; height: 48px; top: 2px; left: 2px; }
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon" aria-hidden="true">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+  </div>
+  <h1>Verify you're human</h1>
+  <p class="subtitle">Complete the quick challenge to continue</p>
+  <p class="body-text">we just need to verify you're not a bot</p>
+  <div class="slider-wrap" id="slider-wrap">
+    <div class="slider-track" id="slider-track">
+      <div class="slider-fill" id="slider-fill"></div>
+      <div class="slider-handle" id="slider-handle" role="slider" aria-label="Drag to verify" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 4 21 12 15 20"></polyline>
+          <polyline points="9 4 3 12 9 20"></polyline>
+        </svg>
+      </div>
+      <span class="slider-label" id="slider-label">Drag to the right &rarr;</span>
+      <span class="slider-success" id="slider-success">Verified</span>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var NONCE = "{{.Nonce}}";
+  var ORIG  = "{{.OrigURL}}";
+  var verified = false;
+  var handle = document.getElementById('slider-handle');
+  var track = document.getElementById('slider-track');
+  var fill = document.getElementById('slider-fill');
+  var label = document.getElementById('slider-label');
+  var success = document.getElementById('slider-success');
+  var trackRect = null;
+  var startX = 0;
+  var currentX = 0;
+  var isDragging = false;
+  var hasInteracted = false;
+
+  function getTrackRect() {
+    return track.getBoundingClientRect();
+  }
+
+  function setPosition(x) {
+    var rect = getTrackRect();
+    var maxX = rect.width - handle.offsetWidth - 4; // 2px padding each side
+    x = Math.max(0, Math.min(x, maxX));
+    currentX = x;
+    var pct = (x / maxX) * 100;
+    handle.style.transform = 'translateX(' + x + 'px)';
+    fill.style.width = pct + '%';
+    handle.setAttribute('aria-valuenow', Math.round(pct));
+    if (pct > 30) label.classList.add('hidden');
+    if (pct >= 95 && !verified) complete();
+  }
+
+  function complete() {
+    verified = true;
+    handle.classList.add('complete', 'dragging');
+    fill.classList.add('complete');
+    label.classList.add('hidden');
+    success.classList.add('visible');
+    handle.removeEventListener('mousedown', onDown);
+    handle.removeEventListener('touchstart', onDown);
+    handle.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    window.removeEventListener('touchmove', onMove);
+    window.removeEventListener('touchend', onUp);
+    pass();
+  }
+
+  function pass() {
+    var frag = location.hash || '';
+    var f = document.createElement('form');
+    f.method = 'POST';
+    f.action = '/__gate/verify' + frag;
+    f.style.display = 'none';
+    var n = document.createElement('input'); n.type='hidden'; n.name='n'; n.value=NONCE; f.appendChild(n);
+    var p = document.createElement('input'); p.type='hidden'; p.name='p'; p.value='1'; f.appendChild(p);
+    var o = document.createElement('input'); o.type='hidden'; o.name='o'; o.value=ORIG; f.appendChild(o);
+    document.body.appendChild(f);
+    f.submit();
+  }
+
+  function onDown(e) {
+    if (verified) return;
+    hasInteracted = true;
+    isDragging = true;
+    trackRect = getTrackRect();
+    startX = (e.touches ? e.touches[0].clientX : e.clientX) - currentX;
+    handle.classList.add('dragging');
+    e.preventDefault();
+  }
+
+  function onMove(e) {
+    if (!isDragging || verified) return;
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    setPosition(clientX - startX);
+  }
+
+  function onUp(e) {
+    if (!isDragging) return;
+    isDragging = false;
+    handle.classList.remove('dragging');
+    if (!verified) {
+      // snap back if not completed
+      setPosition(0);
+    }
+  }
+
+  function onKeyDown(e) {
+    if (verified) return;
+    var rect = getTrackRect();
+    var maxX = rect.width - handle.offsetWidth - 4;
+    var step = maxX / 10;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      hasInteracted = true;
+      setPosition(currentX + step);
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      setPosition(currentX - step);
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      hasInteracted = true;
+      setPosition(0);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      hasInteracted = true;
+      setPosition(maxX);
+    }
+  }
+
+  // init
+  handle.addEventListener('mousedown', onDown);
+  handle.addEventListener('touchstart', onDown, {passive: false});
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+  window.addEventListener('touchmove', onMove, {passive: false});
+  window.addEventListener('touchend', onUp);
+  handle.addEventListener('keydown', onKeyDown);
+
+  // re-measure on resize
+  window.addEventListener('resize', function() {
+    if (!verified) setPosition(currentX);
+  });
+})();
+</script>
+</body>
+</html>

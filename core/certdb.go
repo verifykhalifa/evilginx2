@@ -168,6 +168,12 @@ func (o *CertDb) setManagedSync(hosts []string, t time.Duration) error {
 	return err
 }
 
+// SyncCertificates obtains/renews TLS certificates for the given hostnames.
+// Exported for the dashboard so it can sync certs after binding a new domain.
+func (o *CertDb) SyncCertificates(ctx context.Context, hosts []string) error {
+	return o.magic.ManageSync(ctx, hosts)
+}
+
 func (o *CertDb) setUnmanagedSync(verbose bool) error {
 	sitesDir := filepath.Join(o.cache_dir, "sites")
 

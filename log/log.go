@@ -16,6 +16,31 @@ var g_rl *readline.Instance = nil
 var debug_output = true
 var mtx_log *sync.Mutex = &sync.Mutex{}
 
+// Hook for capturing logs (e.g., for dashboard)
+type LogHook func(level string, msg string, fields map[string]interface{})
+var logHooks []LogHook
+var logHooksMu sync.Mutex
+
+func AddLogHook(hook LogHook) {
+	logHooksMu.Lock()
+	defer logHooksMu.Unlock()
+	logHooks = append(logHooks, hook)
+}
+
+func SetHook(hook LogHook) {
+	logHooksMu.Lock()
+	defer logHooksMu.Unlock()
+	logHooks = []LogHook{hook}
+}
+
+func callHooks(level string, msg string) {
+	logHooksMu.Lock()
+	defer logHooksMu.Unlock()
+	for _, h := range logHooks {
+		h(level, msg, nil)
+	}
+}
+
 const (
 	DEBUG = iota
 	INFO
@@ -67,57 +92,71 @@ func Debug(format string, args ...interface{}) {
 	defer mtx_log.Unlock()
 
 	if debug_output {
-		fmt.Fprint(stdout, format_msg(DEBUG, format+"\n", args...))
+		msg := format_msg(DEBUG, format+"\n", args...)
+		fmt.Fprint(stdout, msg)
 		refreshReadline()
 	}
+	callHooks("debug", fmt.Sprintf(format, args...))
 }
 
 func Info(format string, args ...interface{}) {
 	mtx_log.Lock()
 	defer mtx_log.Unlock()
 
-	fmt.Fprint(stdout, format_msg(INFO, format+"\n", args...))
+	msg := format_msg(INFO, format+"\n", args...)
+	fmt.Fprint(stdout, msg)
 	refreshReadline()
+	callHooks("info", fmt.Sprintf(format, args...))
 }
 
 func Important(format string, args ...interface{}) {
 	mtx_log.Lock()
 	defer mtx_log.Unlock()
 
-	fmt.Fprint(stdout, format_msg(IMPORTANT, format+"\n", args...))
+	msg := format_msg(IMPORTANT, format+"\n", args...)
+	fmt.Fprint(stdout, msg)
 	refreshReadline()
+	callHooks("important", fmt.Sprintf(format, args...))
 }
 
 func Warning(format string, args ...interface{}) {
 	mtx_log.Lock()
 	defer mtx_log.Unlock()
 
-	fmt.Fprint(stdout, format_msg(WARNING, format+"\n", args...))
+	msg := format_msg(WARNING, format+"\n", args...)
+	fmt.Fprint(stdout, msg)
 	refreshReadline()
+	callHooks("warning", fmt.Sprintf(format, args...))
 }
 
 func Error(format string, args ...interface{}) {
 	mtx_log.Lock()
 	defer mtx_log.Unlock()
 
-	fmt.Fprint(stdout, format_msg(ERROR, format+"\n", args...))
+	msg := format_msg(ERROR, format+"\n", args...)
+	fmt.Fprint(stdout, msg)
 	refreshReadline()
+	callHooks("error", fmt.Sprintf(format, args...))
 }
 
 func Fatal(format string, args ...interface{}) {
 	mtx_log.Lock()
 	defer mtx_log.Unlock()
 
-	fmt.Fprint(stdout, format_msg(FATAL, format+"\n", args...))
+	msg := format_msg(FATAL, format+"\n", args...)
+	fmt.Fprint(stdout, msg)
 	refreshReadline()
+	callHooks("fatal", fmt.Sprintf(format, args...))
 }
 
 func Success(format string, args ...interface{}) {
 	mtx_log.Lock()
 	defer mtx_log.Unlock()
 
-	fmt.Fprint(stdout, format_msg(SUCCESS, format+"\n", args...))
+	msg := format_msg(SUCCESS, format+"\n", args...)
+	fmt.Fprint(stdout, msg)
 	refreshReadline()
+	callHooks("success", fmt.Sprintf(format, args...))
 }
 
 func Printf(format string, args ...interface{}) {
@@ -126,6 +165,7 @@ func Printf(format string, args ...interface{}) {
 
 	fmt.Fprintf(stdout, format, args...)
 	refreshReadline()
+	callHooks("info", fmt.Sprintf(format, args...))
 }
 
 func format_msg(lvl int, format string, args ...interface{}) string {

